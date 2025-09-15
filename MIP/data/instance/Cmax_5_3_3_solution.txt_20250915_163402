@@ -1,0 +1,23 @@
+Runtime = 0.02 seconds
+Objective = Cmax
+Num_Jobs = 5
+Num_Machines = 3
+Num_Periods = 3
+TE = 341.35
+Cmax = 31.4
+TEC = 1789.6
+Job1, Machine0, S=0.00, C=2.80, Period=0, Mode=High
+Job1, Machine1, S=2.80, C=7.00, Period=0, Mode=High
+Job1, Machine2, S=7.00, C=12.00, Period=0, Mode=Low
+Job2, Machine0, S=9.00, C=15.00, Period=0, Mode=Low
+Job2, Machine1, S=15.00, C=17.80, Period=1, Mode=High
+Job2, Machine2, S=19.50, C=22.30, Period=1, Mode=High
+Job3, Machine0, S=18.80, C=22.30, Period=1, Mode=High
+Job3, Machine1, S=22.30, C=25.10, Period=1, Mode=High
+Job3, Machine2, S=25.10, C=27.20, Period=1, Mode=High
+Job4, Machine0, S=16.00, C=18.80, Period=1, Mode=High
+Job4, Machine1, S=18.80, C=22.30, Period=1, Mode=High
+Job4, Machine2, S=22.30, C=25.10, Period=1, Mode=High
+Job5, Machine0, S=22.30, C=25.80, Period=1, Mode=High
+Job5, Machine1, S=25.80, C=28.60, Period=1, Mode=High
+Job5, Machine2, S=28.60, C=31.40, Period=1, Mode=High
