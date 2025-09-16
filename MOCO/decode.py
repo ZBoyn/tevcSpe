@@ -129,7 +129,11 @@ class Decoder:
             current_time += duration_in_period
         return cost
 
-""" if __name__ == "__main__":
+""" 
+if __name__ == "__main__":
+    # Problem: 当前的编码方式并不能完全的解码出所有信息 eg.
+    # 1. 注意到TE每台机器上的开始时间是主动延后的 仅用put_off无法完全解码出来
+    
     print("##########################################################")
     try:
         problem = load_instance("MOCO\\data\\instance_5j_3m.npz")
@@ -157,13 +161,37 @@ class Decoder:
     decoded_solution = decoder.decode(cmax_solution)
 
     objectives = decoded_solution.objectives
+    # start_times = decoded_solution.start_times
+    # complete_times = decoded_solution.completion_times
     print(f"Cmax: {objectives[0]:.2f}")
     print(f"TE: {objectives[1]:.2f}")
     print(f"TEC: {objectives[2]:.2f}")
+    # print(f"start_times: {start_times}")
+    # print(f"complete_times: {complete_times}")
 
     print("##########################################################")
 
     te_sequence = np.array([0, 3, 4, 1, 2])
     te_mode = np.zeros((problem.num_jobs, problem.num_machines), dtype=int)
     te_put_off = np.zeros((problem.num_jobs, problem.num_machines), dtype=int)
-    te_put_off[] """
+    te_put_off[0, 0] = 1
+    te_solution = Solution(
+        sequence=te_sequence,
+        mode=te_mode,
+        put_off=te_put_off
+    )
+    print("-" * 20)
+    print("TE:")
+
+    decoded_solution = decoder.decode(te_solution)
+
+    objectives = decoded_solution.objectives
+    start_times = decoded_solution.start_times
+    complete_times = decoded_solution.completion_times
+    print(f"Cmax: {objectives[0]:.2f}")
+    print(f"TE: {objectives[1]:.2f}")
+    print(f"TEC: {objectives[2]:.2f}")
+    print(f"start_times: {start_times}")
+    print(f"complete_times: {complete_times}")
+    print("##########################################################")
+"""
