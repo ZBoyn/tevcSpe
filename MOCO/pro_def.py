@@ -10,11 +10,11 @@ class ProblemDefinition:
     period_start_times: np.ndarray    # U[K+1]: Start times of price periods
     period_prices: np.ndarray         # W[K]: Price for each period
 
-    HIGH_MODE_SPEED_FACTOR: float = 0.7  
-    HIGH_MODE_POWER_COST: float = 1.5    
-    LOW_MODE_SPEED_FACTOR: float = 1.0   
-    LOW_MODE_POWER_COST: float = 1.0
-    
+    HIGH_MODE_SPEED_FACTOR: float = 0.7
+    HIGH_MODE_POWER_FACTOR: float = 1.5
+    LOW_MODE_SPEED_FACTOR: float = 1.0
+    LOW_MODE_POWER_FACTOR: float = 1.0
+
     IDLE_MODE_POWER: float = 1.0
 
     num_jobs: int = field(init=False)
@@ -28,7 +28,7 @@ class ProblemDefinition:
             raise ValueError("period_start_times length must be num_periods + 1")
         
         self.speed_factors = {0: self.LOW_MODE_SPEED_FACTOR, 1: self.HIGH_MODE_SPEED_FACTOR}
-        self.power_factors = {0: self.LOW_MODE_POWER_COST, 1: self.HIGH_MODE_POWER_COST}
+        self.power_factors = {0: self.LOW_MODE_POWER_FACTOR, 1: self.HIGH_MODE_POWER_FACTOR}
 
 @dataclass
 class Solution:
@@ -36,8 +36,10 @@ class Solution:
     mode: np.ndarray      # Shape: (N, M) - Processing mode for each op
     put_off: np.ndarray   # Shape: (N, M) - Delay decision for each op
 
+    start_times: np.ndarray = field(init=False, default=None)
     completion_times: np.ndarray = field(init=False, default=None) # C[N, M]
     objectives: np.ndarray = field(init=False, default_factory=lambda: np.full(3, np.inf)) # [Cmax, TEC, TE]
     
     def __post_init__(self):
+        self.start_times = np.zeros_like(self.mode, dtype=float)
         self.completion_times = np.zeros_like(self.mode, dtype=float)
