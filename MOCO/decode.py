@@ -53,7 +53,7 @@ class Decoder:
                 if np.isinf(actual_start_time):
                     return {
                         "start_times": start_times, "completion_times": completion_times,
-                        "objectives": np.full(3, np.inf)
+                        "objectives": np.full(3, np.inf, dtype=float)
                     }
 
                 start_times[job_id, m_id] = actual_start_time
@@ -99,7 +99,7 @@ class Decoder:
         return {
             "start_times": start_times,
             "completion_times": completion_times,
-            "objectives": np.array([cmax, total_energy, total_energy_cost])
+            "objectives": np.array([round(cmax, 2), round(total_energy, 2), round(total_energy_cost, 2)])
         }
 
 

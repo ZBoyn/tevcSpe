@@ -4,6 +4,8 @@ import math
 from itertools import combinations
 from pro_def import ProblemDefinition, Solution
 from decode import Decoder
+from util.plot_pf import plot_pareto_front
+from util.results_manager import save_results
 
 class MOEAD:
     def __init__(self,
@@ -59,7 +61,7 @@ class MOEAD:
         distances = np.linalg.norm(self.weights[:, np.newaxis, :] - self.weights, axis=2)
         return np.argsort(distances, axis=1)[:, :self.T]
 
-    def _initialize_population(self) -> list[Solution]:
+    def _initialize_population(self):
         """随机生成初始种群"""
         population = []
         for _ in range(self.N):
@@ -149,9 +151,41 @@ class MOEAD:
                     if new_obj_val < current_obj_val:
                         self.population[j] = child
             
-            # 打印进度
             if (gen + 1) % 10 == 0:
                 print(f"Generation {gen + 1}/{self.max_gen} completed.")
         
-        # 返回最终的帕累托前沿近似解集
         return self.population
+
+if __name__ == "__main__":
+    from data_manager import load_instance
+    
+    instance_name = "instance_5j_3m"
+    problem = load_instance(f"MOCO\\data\\{instance_name}.npz")
+    
+    decoder = Decoder(problem)
+    
+    params = {
+        "population_size": 100,
+        "neighborhood_size": 20,
+        "max_generations": 100,
+        "crossover_rate": 0.8,
+        "mutation_rate": 0.1
+    }
+    
+    moead = MOEAD(problem, 
+                  decoder, 
+                  params["population_size"], 
+                  params["neighborhood_size"], 
+                  params["max_generations"], 
+                  params["crossover_rate"], 
+                  params["mutation_rate"])
+    
+    population = moead.run()
+    
+    print("MOEAD run finished.")
+    
+    save_results(population, params, instance_name)
+    
+    plot_pareto_front(population, instance_name)
+    
+    print("##########################################################")
