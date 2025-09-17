@@ -1,7 +1,6 @@
 import re
 import numpy as np
 from pro_def import ProblemDefinition, Solution
-from data_manager import load_instance
 
 class Decoder:
     def __init__(self, problem_definition: ProblemDefinition):
@@ -15,9 +14,11 @@ class Decoder:
             solution.completion_times = results["completion_times"]
             solution.objectives = results["objectives"]
         
-        elif mode == "RightShift":
+        elif mode == "LocalOpTEC":
             pass
-            
+        
+        elif mode == "RightOpTE":
+            pass
         return solution
 
     def _calculate_schedule_and_objectives(self, solution: Solution) -> dict:
@@ -131,6 +132,7 @@ class Decoder:
 
 """ 
 if __name__ == "__main__":
+    from data_manager import load_instance
     # Problem: 当前的编码方式并不能完全的解码出所有信息 eg.
     # 1. 注意到TE每台机器上的开始时间是主动延后的 仅用put_off无法完全解码出来
     
