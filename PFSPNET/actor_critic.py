@@ -19,10 +19,8 @@ class PFSPNet(nn.Module):
                 target_sequence=None
                 ):
         
-        # 编码器
         encoded_jobs_batched = self.encoder(batch_instance_processing_times, batch_num_machines_scalar)
 
-        # 解码器
         selected_indices, log_probs, encoded_jobs_batched = self.decoder(
             encoded_jobs_batched,
             all_job_processing_times=batch_instance_processing_times,
