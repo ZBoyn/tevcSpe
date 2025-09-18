@@ -370,3 +370,41 @@ class PFSPNetDecoder(nn.Module):
         final_log_probs = torch.stack(outputs_log_probs, dim=1)
 
         return final_indices, final_log_probs, encoded_jobs
+
+""" 
+if __name__ == '__main__':
+    batch_size = 2
+    num_jobs = 5
+    num_machines = 3
+    enc_dim = 4
+    di_output_dim = 6
+    rnn2_hidden_dim = 8
+
+    encoded_jobs = torch.randn(batch_size, num_jobs, enc_dim)
+    all_job_processing_times = torch.randn(batch_size, num_jobs, num_machines, 1)
+    num_machines_scalar = torch.tensor([[float(num_machines)]] * batch_size)
+
+    decoder = PFSPNetDecoder(
+        step1_pt_encoder_args={'rnn_type': 'GRU', 'hidden_dim': 10, 'scalar_input_dim': 1, 'embedding_dim': 64},
+        step1_m_embedding_dim=5,
+        step1_di_output_dim=di_output_dim,
+        step2_rnn2_hidden_dim=rnn2_hidden_dim,
+        attention_job_encoding_dim=enc_dim,
+        attention_hidden_dim=12,
+        step1_fc_hidden_dims=[20, 15],
+        step2_rnn_type='GRU',
+        step2_num_rnn_layers=2,
+        ptr_dim=3
+    )
+
+    selected_indices, log_probs, encoded_jobs_out = decoder(
+        encoded_jobs,
+        all_job_processing_times,
+        num_machines_scalar,
+        max_decode_len=num_jobs
+    )
+
+    print("Selected Indices:", selected_indices)
+    print("Log Probabilities:", log_probs)
+    print("Encoded Jobs Output Shape:", encoded_jobs_out.shape)
+"""
