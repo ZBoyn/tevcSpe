@@ -8,7 +8,7 @@ import numpy as np
 import os
 from gene_data import generate_and_save_instance
 from calc import calculate_objectives_pytorch
-
+import argparse
 
 def train_one_batch(
     actor_model, critic_model, optimizer_actor, optimizer_critic,
@@ -104,12 +104,21 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    config_batch_size = 16
-    config_num_jobs = 20
-    config_num_machines = 5
-    config_k_intervals = 10
-    config_epochs = 100
-    config_steps_per_epoch = 50
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--num_jobs', type=int, default=10)
+    parser.add_argument('--num_machines', type=int, default=3)
+    parser.add_argument('--k_intervals', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--steps_per_epoch', type=int, default=50)
+    args = parser.parse_args()
+
+    config_batch_size = args.batch_size
+    config_num_jobs = args.num_jobs
+    config_num_machines = args.num_machines
+    config_k_intervals = args.k_intervals
+    config_epochs = args.epochs
+    config_steps_per_epoch = args.steps_per_epoch
     
     instance_save_dir = 'PFSPNET/data'
     instance_filename = f"instance_{config_num_jobs}j_{config_num_machines}m_{config_k_intervals}k.pt"

@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 
-Num_jobs = 20
-Num_machines = 5
+Num_jobs = 10
+Num_machines = 3
 Num_periods = 10
 
 data = torch.load(f"MIP/data/PyTorch/instance_{Num_jobs}j_{Num_machines}m_{Num_periods}k.pt", map_location="cpu")

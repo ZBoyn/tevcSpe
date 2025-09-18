@@ -1,0 +1,37 @@
+pfspnet_model_config:
+  encoder:
+    part1:
+      scalar_input_dim: 1
+      embedding_dim: 32
+      hidden_dim: 64
+      rnn_type: 'RNN'
+      num_rnn_layers: 1
+    part2:
+      p_vector_dim: 64
+      m_embedding_dim: 16
+      output_dim: 48
+    part3:
+      p_tilde_dim: 48
+      conv_out_channels: 96
+      conv_kernel_size: 3
+      conv_padding: 'same'
+  decoder:
+    step1_pt_encoder:
+      scalar_input_dim: 1
+      embedding_dim: 30
+      hidden_dim: 50
+      rnn_type: 'RNN'
+      num_rnn_layers: 1
+    step1_m_embedding_dim: 20
+    step1_di_output_dim: 40
+    step1_fc_hidden_dims: [35]
+    step2_rnn2_hidden_dim: 70
+    step2_rnn_type: 'LSTM'
+    step2_num_rnn_layers: 1
+    attention_job_encoding_dim: 96
+    attention_hidden_dim: 55
+    ptr_dim: 25
+
+inference_params:
+  model_path: '../PFSPNET/models/best_actor_20j_5m.pt'
+  num_samples: 128

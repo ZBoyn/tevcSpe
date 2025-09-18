@@ -3,37 +3,10 @@ from gurobipy import Model, GRB, quicksum
 import random
 import time
 from data.config import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
-from data.load_data import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
+# from data.load_data import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
+import json
 
-for i in range(1):
-    time.sleep(1)
-    
-    # n, m = 5, 3
-    # p, e, r, u, s, f, k, speedFactor, energyFactor, e_idle = generate_instance(n, m, seed = i)
-    # current_time = time.strftime("%Y%m%d_%H%M%S")
-    # with open(f"data/data_{i}.txt_{current_time}", "w") as fp:
-    #     fp.write(f"p: {p}\n")
-    #     fp.write(f"e: {e}\n")
-    #     fp.write(f"r: {r}\n")
-    #     fp.write(f"u: {u}\n")
-    #     fp.write(f"s: {s}\n")
-    #     fp.write(f"f: {f}\n")
-    #     fp.write(f"k: {k}\n")
-    #     fp.write(f"speedFactor: {speedFactor}\n")
-    #     fp.write(f"B: {energyFactor}\n")
-    #     fp.write(f"e_idle: {e_idle}\n")
-
-
-
-    """
-    print("p:", p)
-    print("e:", e)
-    print("r:", r)
-    print("u:", u)
-    print("s:", s)
-    print("f:", f)
-    print("k:", k)
-    """
+def create_model_with_inequalities(inequality_config, n, m):
 
     M = 100000
 
@@ -149,6 +122,26 @@ for i in range(1):
         model_total.addGenConstrMax(C_machine[i], [C[j,i] for j in range(n)], name=f"Max_C_m{i}")
 
     #########################################################
+    ################### 有效不等式 ###########################
+    if inequality_config.get('ineq1', False):
+        # 有效不等式1
+        model_total.addConstrs(
+                (A[j,i,t] <= quicksum(A[j,i,tp] for tp in range(t,k))
+                for j in range(n) for i in range(m) for t in range(k)),
+                name="ValidInequalityI"
+            )
+    
+    if inequality_config.get('ineq2', False):
+        # 有效不等式2
+        for i in range(m):
+                for t in range(k):
+                    model_total.addConstr(
+                        quicksum(p[j+1][i] * A[j,i,t] - 0.3*p[j+1][i] * Z[j,i,t]
+                                for j in range(n)) <= s[t],
+                        name=f"Cap_m{i}_t{t}"
+                    )
+
+    #########################################################
     ################### 能耗计算 #############################
     # 1. 加工能耗
     processing_energy = quicksum(
@@ -192,18 +185,13 @@ for i in range(1):
 
                 model_total.addGenConstrAnd(Z[j, i, t], [A[j, i, t], Y[j, i]])
 
-    # -------------------- 总电费 TEC 的计算 --------------------
-    # TEC_expr = quicksum( A[j,i,t]*p[j+1][i]*e[j+1][i]*f[t] +
-    #                     (speedFactor * energyFactor - 1) * p[j+1][i]*e[j+1][i]*f[t] * Z[j,i,t]
-    #                     for j in range(n) for i in range(m) for t in range(k))
-    
-    # --- 1. 计算加工电费 (与之前逻辑相同) ---
+    # 1. 计算加工电费
     processing_TEC = quicksum(
         f[t] * p[j+1][i] * e[j+1][i] * (A[j,i,t] + (speedFactor * energyFactor - 1) * Z[j,i,t])
         for j in range(n) for i in range(m) for t in range(k)
     )
 
-    # 空闲时间电费
+    # 2. 空闲时间电费
     OverlapStart = model_total.addVars(m, k, name="OverlapStart")
     OverlapEnd = model_total.addVars(m, k, name="OverlapEnd")
     OverlapDuration = model_total.addVars(m, k, name="OverlapDuration")
@@ -235,18 +223,10 @@ for i in range(1):
     )
 
     model_total.addConstr(TEC_var == processing_TEC + idle_TEC, name="TotalCost")
-    # model_total.addConstr(TEC_var == TEC_expr, name="TotalCost")
 
-    # TEC_expr = quicksum(
-    #     A[j,i,t] * p[j+1][i] * e[j+1][i] * f[t] * (1 + 0.05*Y[j,i])
-    #     for j in range(n) for i in range(m) for t in range(k))
-    # model_total.addConstr(TEC_var == TEC_expr, name="TotalCost")
-    # TEC_expr0 = quicksum( A[j,2,t]*p[j+1][2]*e[j+1][2]*f[t] +
-    #                     0.05 * p[j+1][2]*e[j+1][2]*f[t] * Z[j,2,t]
-    #                     for j in range(n) for t in range(k))
-    # ------------------- 求解模型 -------------------
-    # model_total.optimize()
+    return model_total, Cmax, TE_var, TEC_var
 
+    """ 
     for obj in ["Cmax", "TE", "TEC"]:
         setmodel(obj)
         model_total.update()
@@ -272,3 +252,192 @@ for i in range(1):
             save(obj)
         else:
             print("模型未找到最优解")
+        """
+
+# def run_experiment_for_size(n, m):
+#     """运行特定规模问题的所有有效不等式组合实验"""
+    
+#     # 定义8种配置
+#     configurations = [
+#         {"name": "Model", "config": {}},
+#         {"name": "Model_1", "config": {"ineq1": True}},
+#         {"name": "Model_2", "config": {"ineq2": True}},
+#     ]
+    
+#     results = []
+    
+#     print(f"\n开始测试问题规模: n={n}, m={m}")
+    
+#     for config in configurations:
+#         print(f"正在测试: {config['name']}")
+        
+#         try:
+#             start_time = time.time()
+#             model, TE_var, Cmax, TEC_var = create_model_with_inequalities(config['config'], n, m)
+#             model.optimize()
+#             end_time = time.time()
+            
+#             runtime = end_time - start_time
+            
+#             # 检查是否有可行解
+#             if model.status == GRB.OPTIMAL:
+#                 result = {
+#                     "配置": config['name'],
+#                     "运行时间(秒)": round(runtime, 2),
+#                     "TE": round(TE_var.X, 2),
+#                     "Cmax": round(Cmax.X, 2),
+#                     "TEC": round(TEC_var.X, 2),
+#                     "状态": "最优解",
+#                     "有效不等式": config['config']
+#                 }
+#             elif model.status == GRB.TIME_LIMIT and model.solCount > 0:
+#                 # 时间限制但找到了可行解
+#                 result = {
+#                     "配置": config['name'],
+#                     "运行时间(秒)": round(runtime, 2),
+#                     "TE": round(TE_var.X, 2),
+#                     "Cmax": round(Cmax.X, 2),
+#                     "TEC": round(TEC_var.X, 2),
+#                     "状态": f"时间限制 (状态: {model.status})",
+#                     "有效不等式": config['config']
+#                 }
+#             elif model.solCount > 0:
+#                 # 其他情况但有可行解
+#                 result = {
+#                     "配置": config['name'],
+#                     "运行时间(秒)": round(runtime, 2),
+#                     "TE": round(TE_var.X, 2),
+#                     "Cmax": round(Cmax.X, 2),
+#                     "TEC": round(TEC_var.X, 2),
+#                     "状态": f"可行解 (状态: {model.status})",
+#                     "有效不等式": config['config']
+#                 }
+#             else:
+#                 # 没有找到任何可行解
+#                 result = {
+#                     "配置": config['name'],
+#                     "运行时间(秒)": round(runtime, 2),
+#                     "TE": "N/A",
+#                     "Cmax": "N/A", 
+#                     "TEC": "N/A",
+#                     "状态": f"无可行解 (状态: {model.status})",
+#                     "有效不等式": config['config']
+#                 }
+            
+#             results.append(result)
+#             print(f"完成: {config['name']}, 运行时间: {runtime:.2f}秒")
+            
+#         except Exception as e:
+#             result = {
+#                 "配置": config['name'],
+#                 "运行时间(秒)": "N/A",
+#                 "TE": "N/A",
+#                 "Cmax": "N/A",
+#                 "TEC": "N/A", 
+#                 "状态": f"错误: {str(e)}",
+#                 "有效不等式": config['config']
+#             }
+#             results.append(result)
+#             print(f"错误: {config['name']} - {str(e)}")
+    
+#     # 保存结果到特定文件
+#     current_time = time.strftime("%Y%m%d_%H%M%S")
+#     filename = f"有效不等式测试结果_n{n}_m{m}_{current_time}.txt"
+    
+#     with open(filename, "w", encoding="utf-8") as f:
+#         f.write("有效不等式组合测试结果\n")
+#         f.write("=" * 50 + "\n")
+#         f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+#         f.write(f"问题规模: n={n}, m={m}\n")
+#         f.write("=" * 50 + "\n\n")
+        
+#         # 表格形式输出
+#         f.write(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10} {'状态':<15}\n")
+#         f.write("-" * 80 + "\n")
+        
+#         for result in results:
+#             f.write(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10} {result['状态']:<15}\n")
+        
+#         f.write("\n" + "=" * 50 + "\n")
+#         f.write("详细结果 (JSON格式):\n")
+#         f.write(json.dumps(results, ensure_ascii=False, indent=2))
+    
+#     print(f"结果已保存到: {filename}")
+    
+#     # 打印汇总
+#     print(f"\n问题规模 n={n}, m={m} 的测试结果汇总:")
+#     print(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10}")
+#     print("-" * 70)
+#     for result in results:
+#         print(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10}")
+    
+#     return results, filename
+
+# def run_all_experiments():
+#     """运行所有问题规模的实验"""
+    
+#     # 定义要测试的问题规模
+#     problem_sizes = [
+#         (7, 5),
+#         (10, 5),
+#         (12, 5),
+#         (15, 5),
+#     ]
+    
+#     all_results = {}
+    
+#     print("开始多规模有效不等式测试")
+#     print("=" * 60)
+    
+#     for n, m in problem_sizes:
+#         try:
+#             results, filename = run_experiment_for_size(n, m)
+#             all_results[f"n{n}_m{m}"] = {
+#                 "problem_size": (n, m),
+#                 "results": results,
+#                 "filename": filename
+#             }
+#             print(f"\n完成问题规模 n={n}, m={m} 的测试")
+#             print("-" * 40)
+#         except Exception as e:
+#             print(f"问题规模 n={n}, m={m} 测试失败: {str(e)}")
+    
+#     # 保存总体汇总结果
+#     current_time = time.strftime("%Y%m%d_%H%M%S")
+#     summary_filename = f"有效不等式测试汇总_{current_time}.txt"
+    
+#     with open(summary_filename, "w", encoding="utf-8") as f:
+#         f.write("多规模有效不等式测试汇总\n")
+#         f.write("=" * 60 + "\n")
+#         f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+#         f.write("=" * 60 + "\n\n")
+        
+#         for size_key, data in all_results.items():
+#             n, m = data["problem_size"]
+#             f.write(f"问题规模: n={n}, m={m}\n")
+#             f.write(f"详细结果文件: {data['filename']}\n")
+#             f.write("-" * 40 + "\n")
+            
+#             # 找到最佳TEC的配置（包括非最优解）
+#             best_config = None
+#             best_tec = float('inf')
+#             best_status = None
+#             for result in data['results']:
+#                 if result['TEC'] != 'N/A' and isinstance(result['TEC'], (int, float)):
+#                     if result['TEC'] < best_tec:
+#                         best_tec = result['TEC']
+#                         best_config = result['配置']
+#                         best_status = result['状态']
+            
+#             if best_config:
+#                 f.write(f"最佳TEC配置: {best_config}, TEC值: {best_tec}, 状态: {best_status}\n")
+#             else:
+#                 f.write("未找到可行解\n")
+            
+#             f.write("\n")
+    
+#     print(f"\n总体汇总结果已保存到: {summary_filename}")
+#     print("所有测试完成！")
+
+# if __name__ == "__main__":
+#     run_all_experiments() 

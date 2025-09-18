@@ -74,8 +74,8 @@ def run_inference(model_path, instance_path, num_samples=100, device='cpu'):
     print(f"\nThe best Cmax value is: {best_cmax.item():.2f}")
 
 if __name__ == '__main__':
-    MODEL_FILE_PATH = 'PFSPNET/models/best_actor_20j_5m.pt'
-    INSTANCE_FILE_PATH = 'PFSPNET/data/instance_20j_5m_10k.pt'
+    MODEL_FILE_PATH = 'PFSPNET/models/best_actor_10j_3m.pt'
+    INSTANCE_FILE_PATH = 'PFSPNET/data/instance_10j_3m_10k.pt'
     
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
