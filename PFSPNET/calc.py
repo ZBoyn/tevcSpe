@@ -76,6 +76,7 @@ def calculate_objectives_pytorch(
     
     return batch_cmax, batch_tec
 
+""" 
 if __name__ == "__main__":
     job_sequences = torch.tensor([[2, 0, 3, 4, 5, 6, 1], [2, 6, 5, 4, 0, 3, 1]])  # (batch_size, num_jobs)
     put_off_matrices = torch.tensor([[[0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0]]])  # (batch_size, num_machines, num_jobs)
@@ -90,4 +91,5 @@ if __name__ == "__main__":
         job_sequences, put_off_matrices, P, E, R, u, s, f, device
     )
     print(f"Cmax: {cmax}")
-    print(f"Total Energy Cost (TEC): {tec}")    
+    print(f"Total Energy Cost (TEC): {tec}")
+"""

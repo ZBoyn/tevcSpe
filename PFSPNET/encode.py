@@ -53,8 +53,11 @@ class PartI_JobEncoder(nn.Module):
         num_jobs = job_processing_times.size(1)
         num_machines = job_processing_times.size(2)
 
-        reshaped_times = job_processing_times.view(batch_size * num_jobs, num_machines, self.scalar_input_dim)
+        # Reshape for RNN: (B * N, M, D_scalar)
+        reshaped_times = job_processing_times.reshape(batch_size * num_jobs, num_machines, self.scalar_input_dim)
         
+        # Pass through RNN over machines
+        # output shape: (B * N, M, D_hidden)
         embedded_seq = self.embedding(reshaped_times)
         
         current_batch_size = embedded_seq.size(0)
