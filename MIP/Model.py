@@ -1,9 +1,9 @@
 from gurobipy import Model, GRB, quicksum
-from data.generate_data import generate_instance
+# from data.generate_data import generate_instance
 import random
 import time
 from data.config import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
-
+from data.load_data import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
 
 for i in range(1):
     time.sleep(1)

@@ -161,7 +161,7 @@ if __name__ == '__main__':
     opt_actor = optim.Adam(actor.parameters(), lr=1e-4)
     opt_critic = optim.Adam(critic.parameters(), lr=1e-3)
 
-    model_save_dir = 'PFSPNET/saved_models'
+    model_save_dir = 'PFSPNET/models'
     os.makedirs(model_save_dir, exist_ok=True)
     best_model_path = os.path.join(model_save_dir, f"best_actor_{config_num_jobs}j_{config_num_machines}m.pt")
 
