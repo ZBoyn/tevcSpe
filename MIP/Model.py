@@ -5,6 +5,7 @@ import time
 from data.config import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
 # from data.load_data import n_jobs as n, m_machines as m, k_intervals as k, base_processing_time as p, base_energy as e, release_times as r, u, s, f, speedFactor, energyFactor, e_idle
 import json
+import os
 
 def create_model_with_inequalities(inequality_config, n, m):
 
@@ -15,14 +16,16 @@ def create_model_with_inequalities(inequality_config, n, m):
     random.seed(42)
     model_total.setParam("TimeLimit", 1800)
 
-    # 决策变量
-    # Y[j,i]：机器功率模式（0为低功率，1为高功率）， j=0,...,n-1, i=0,...,m-1
+    ######################################################
+    ###################### 决策变量 #######################
+    
+    # Y[j,i]：机器功率模式(0为低功率，1为高功率)
     Y = model_total.addVars(n, m, vtype=GRB.BINARY, name="Y")
     # S[j,i] 与 C[j,i]：操作 (j,i) 的开始与完成时间
     S = model_total.addVars(n, m, name="S")
     C = model_total.addVars(n, m, name="C")
 
-    # 变量 A[j,i,t]：操作 (j,i) 被分配到时段 t，保证整个操作时间落在所选时段内
+    # 变量 A[j,i,t]：操作 (j,i) 被分配到时段 t, 保证整个操作时间落在所选时段内
     A = model_total.addVars(n, m, k, vtype=GRB.BINARY, name="A")
     X = model_total.addVars(n, n, vtype=GRB.BINARY, name="X")
     for j in range(n):
@@ -31,18 +34,22 @@ def create_model_with_inequalities(inequality_config, n, m):
     # 新增变量 Z[j,i,t] = A[j,i,t] * Y[j,i]，用于线性化
     Z = model_total.addVars(n, m, k, vtype=GRB.BINARY, name="Z")
 
-    # 定义 Cmax
-    Cmax = model_total.addVar(name="Cmax")
-
-    # 定义总能耗 TE（目标变量）
-    TE_var = model_total.addVar(name="TE")
-
-    # 总电费
-    TEC_var = model_total.addVar(name="TEC")
+    ######################################################
+    ####################### 辅助变量 ######################
 
     # 每台机器的最早开始和最晚结束时间
     S_machine = model_total.addVars(m, name="S_machine")
     C_machine = model_total.addVars(m, name="C_machine")
+
+    ######################################################
+    ####################### 目标函数 ######################
+
+    # 定义 Cmax
+    Cmax = model_total.addVar(name="Cmax")
+    # 定义总能耗 TE
+    TE_var = model_total.addVar(name="TE")
+    # 总电费
+    TEC_var = model_total.addVar(name="TEC")
 
     def setmodel(obj):
         if obj == "Cmax":
@@ -183,8 +190,8 @@ def create_model_with_inequalities(inequality_config, n, m):
                 model_total.addConstr(Z[j,i,t] <= Y[j,i], name=f"Z_ub2_{j}_{i}_{t}")
                 model_total.addConstr(Z[j,i,t] >= A[j,i,t] + Y[j,i] - 1, name=f"Z_lb_{j}_{i}_{t}")
 
-                model_total.addGenConstrAnd(Z[j, i, t], [A[j, i, t], Y[j, i]])
-
+                # model_total.addGenConstrAnd(Z[j, i, t], [A[j, i, t], Y[j, i]]) # 与上面的线性约束重复，通常线性约束效率更高
+    
     # 1. 计算加工电费
     processing_TEC = quicksum(
         f[t] * p[j+1][i] * e[j+1][i] * (A[j,i,t] + (speedFactor * energyFactor - 1) * Z[j,i,t])
@@ -254,190 +261,214 @@ def create_model_with_inequalities(inequality_config, n, m):
             print("模型未找到最优解")
         """
 
-# def run_experiment_for_size(n, m):
-#     """运行特定规模问题的所有有效不等式组合实验"""
+def run_experiment_for_size(n, m, objective_name, results_dir):
+    """运行特定规模问题的所有有效不等式组合实验"""
     
-#     # 定义8种配置
-#     configurations = [
-#         {"name": "Model", "config": {}},
-#         {"name": "Model_1", "config": {"ineq1": True}},
-#         {"name": "Model_2", "config": {"ineq2": True}},
-#     ]
+    # 定义4种配置
+    configurations = [
+        {"name": "Model", "config": {}},
+        {"name": "Model_1", "config": {"ineq1": True}},
+        {"name": "Model_2", "config": {"ineq2": True}},
+        {"name": "Model_1_2", "config": {"ineq1": True, "ineq2": True}},
+    ]
     
-#     results = []
+    results = []
     
-#     print(f"\n开始测试问题规模: n={n}, m={m}")
+    print(f"\n开始测试问题规模: n={n}, m={m}, 目标: {objective_name}")
     
-#     for config in configurations:
-#         print(f"正在测试: {config['name']}")
+    for config in configurations:
+        print(f"正在测试: {config['name']}")
         
-#         try:
-#             start_time = time.time()
-#             model, TE_var, Cmax, TEC_var = create_model_with_inequalities(config['config'], n, m)
-#             model.optimize()
-#             end_time = time.time()
+        try:
+            start_time = time.time()
+            model, Cmax, TE_var, TEC_var = create_model_with_inequalities(config['config'], n, m)
             
-#             runtime = end_time - start_time
-            
-#             # 检查是否有可行解
-#             if model.status == GRB.OPTIMAL:
-#                 result = {
-#                     "配置": config['name'],
-#                     "运行时间(秒)": round(runtime, 2),
-#                     "TE": round(TE_var.X, 2),
-#                     "Cmax": round(Cmax.X, 2),
-#                     "TEC": round(TEC_var.X, 2),
-#                     "状态": "最优解",
-#                     "有效不等式": config['config']
-#                 }
-#             elif model.status == GRB.TIME_LIMIT and model.solCount > 0:
-#                 # 时间限制但找到了可行解
-#                 result = {
-#                     "配置": config['name'],
-#                     "运行时间(秒)": round(runtime, 2),
-#                     "TE": round(TE_var.X, 2),
-#                     "Cmax": round(Cmax.X, 2),
-#                     "TEC": round(TEC_var.X, 2),
-#                     "状态": f"时间限制 (状态: {model.status})",
-#                     "有效不等式": config['config']
-#                 }
-#             elif model.solCount > 0:
-#                 # 其他情况但有可行解
-#                 result = {
-#                     "配置": config['name'],
-#                     "运行时间(秒)": round(runtime, 2),
-#                     "TE": round(TE_var.X, 2),
-#                     "Cmax": round(Cmax.X, 2),
-#                     "TEC": round(TEC_var.X, 2),
-#                     "状态": f"可行解 (状态: {model.status})",
-#                     "有效不等式": config['config']
-#                 }
-#             else:
-#                 # 没有找到任何可行解
-#                 result = {
-#                     "配置": config['name'],
-#                     "运行时间(秒)": round(runtime, 2),
-#                     "TE": "N/A",
-#                     "Cmax": "N/A", 
-#                     "TEC": "N/A",
-#                     "状态": f"无可行解 (状态: {model.status})",
-#                     "有效不等式": config['config']
-#                 }
-            
-#             results.append(result)
-#             print(f"完成: {config['name']}, 运行时间: {runtime:.2f}秒")
-            
-#         except Exception as e:
-#             result = {
-#                 "配置": config['name'],
-#                 "运行时间(秒)": "N/A",
-#                 "TE": "N/A",
-#                 "Cmax": "N/A",
-#                 "TEC": "N/A", 
-#                 "状态": f"错误: {str(e)}",
-#                 "有效不等式": config['config']
-#             }
-#             results.append(result)
-#             print(f"错误: {config['name']} - {str(e)}")
-    
-#     # 保存结果到特定文件
-#     current_time = time.strftime("%Y%m%d_%H%M%S")
-#     filename = f"有效不等式测试结果_n{n}_m{m}_{current_time}.txt"
-    
-#     with open(filename, "w", encoding="utf-8") as f:
-#         f.write("有效不等式组合测试结果\n")
-#         f.write("=" * 50 + "\n")
-#         f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-#         f.write(f"问题规模: n={n}, m={m}\n")
-#         f.write("=" * 50 + "\n\n")
-        
-#         # 表格形式输出
-#         f.write(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10} {'状态':<15}\n")
-#         f.write("-" * 80 + "\n")
-        
-#         for result in results:
-#             f.write(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10} {result['状态']:<15}\n")
-        
-#         f.write("\n" + "=" * 50 + "\n")
-#         f.write("详细结果 (JSON格式):\n")
-#         f.write(json.dumps(results, ensure_ascii=False, indent=2))
-    
-#     print(f"结果已保存到: {filename}")
-    
-#     # 打印汇总
-#     print(f"\n问题规模 n={n}, m={m} 的测试结果汇总:")
-#     print(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10}")
-#     print("-" * 70)
-#     for result in results:
-#         print(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10}")
-    
-#     return results, filename
+            # 根据目标名称设置目标函数
+            if objective_name == "Cmax":
+                model.setObjective(Cmax, GRB.MINIMIZE)
+            elif objective_name == "TE":
+                model.setObjective(TE_var, GRB.MINIMIZE)
+            elif objective_name == "TEC":
+                model.setObjective(TEC_var, GRB.MINIMIZE)
 
-# def run_all_experiments():
-#     """运行所有问题规模的实验"""
+            model.optimize()
+            end_time = time.time()
+            
+            runtime = end_time - start_time
+            
+            # 检查是否有可行解
+            if model.status == GRB.OPTIMAL:
+                result = {
+                    "配置": config['name'],
+                    "运行时间(秒)": round(runtime, 2),
+                    "TE": round(TE_var.X, 2),
+                    "Cmax": round(Cmax.X, 2),
+                    "TEC": round(TEC_var.X, 2),
+                    "状态": "最优解",
+                    "有效不等式": config['config']
+                }
+            elif model.status == GRB.TIME_LIMIT and model.solCount > 0:
+                # 时间限制但找到了可行解
+                result = {
+                    "配置": config['name'],
+                    "运行时间(秒)": round(runtime, 2),
+                    "TE": round(TE_var.X, 2),
+                    "Cmax": round(Cmax.X, 2),
+                    "TEC": round(TEC_var.X, 2),
+                    "状态": f"时间限制 (状态: {model.status})",
+                    "有效不等式": config['config']
+                }
+            elif model.solCount > 0:
+                # 其他情况但有可行解
+                result = {
+                    "配置": config['name'],
+                    "运行时间(秒)": round(runtime, 2),
+                    "TE": round(TE_var.X, 2),
+                    "Cmax": round(Cmax.X, 2),
+                    "TEC": round(TEC_var.X, 2),
+                    "状态": f"可行解 (状态: {model.status})",
+                    "有效不等式": config['config']
+                }
+            else:
+                # 没有找到任何可行解
+                result = {
+                    "配置": config['name'],
+                    "运行时间(秒)": round(runtime, 2),
+                    "TE": "N/A",
+                    "Cmax": "N/A", 
+                    "TEC": "N/A",
+                    "状态": f"无可行解 (状态: {model.status})",
+                    "有效不等式": config['config']
+                }
+            
+            results.append(result)
+            print(f"完成: {config['name']}, 运行时间: {runtime:.2f}秒")
+            
+        except Exception as e:
+            result = {
+                "配置": config['name'],
+                "运行时间(秒)": "N/A",
+                "TE": "N/A",
+                "Cmax": "N/A",
+                "TEC": "N/A", 
+                "状态": f"错误: {str(e)}",
+                "有效不等式": config['config']
+            }
+            results.append(result)
+            print(f"错误: {config['name']} - {str(e)}")
     
-#     # 定义要测试的问题规模
-#     problem_sizes = [
-#         (7, 5),
-#         (10, 5),
-#         (12, 5),
-#         (15, 5),
-#     ]
+    # 保存结果到特定文件
+    filename = os.path.join(results_dir, f"结果_{objective_name}_n{n}_m{m}.txt")
     
-#     all_results = {}
-    
-#     print("开始多规模有效不等式测试")
-#     print("=" * 60)
-    
-#     for n, m in problem_sizes:
-#         try:
-#             results, filename = run_experiment_for_size(n, m)
-#             all_results[f"n{n}_m{m}"] = {
-#                 "problem_size": (n, m),
-#                 "results": results,
-#                 "filename": filename
-#             }
-#             print(f"\n完成问题规模 n={n}, m={m} 的测试")
-#             print("-" * 40)
-#         except Exception as e:
-#             print(f"问题规模 n={n}, m={m} 测试失败: {str(e)}")
-    
-#     # 保存总体汇总结果
-#     current_time = time.strftime("%Y%m%d_%H%M%S")
-#     summary_filename = f"有效不等式测试汇总_{current_time}.txt"
-    
-#     with open(summary_filename, "w", encoding="utf-8") as f:
-#         f.write("多规模有效不等式测试汇总\n")
-#         f.write("=" * 60 + "\n")
-#         f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-#         f.write("=" * 60 + "\n\n")
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"有效不等式组合测试结果 (目标: {objective_name})\n")
+        f.write("=" * 50 + "\n")
+        f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"问题规模: n={n}, m={m}\n")
+        f.write("=" * 50 + "\n\n")
         
-#         for size_key, data in all_results.items():
-#             n, m = data["problem_size"]
-#             f.write(f"问题规模: n={n}, m={m}\n")
-#             f.write(f"详细结果文件: {data['filename']}\n")
-#             f.write("-" * 40 + "\n")
-            
-#             # 找到最佳TEC的配置（包括非最优解）
-#             best_config = None
-#             best_tec = float('inf')
-#             best_status = None
-#             for result in data['results']:
-#                 if result['TEC'] != 'N/A' and isinstance(result['TEC'], (int, float)):
-#                     if result['TEC'] < best_tec:
-#                         best_tec = result['TEC']
-#                         best_config = result['配置']
-#                         best_status = result['状态']
-            
-#             if best_config:
-#                 f.write(f"最佳TEC配置: {best_config}, TEC值: {best_tec}, 状态: {best_status}\n")
-#             else:
-#                 f.write("未找到可行解\n")
-            
-#             f.write("\n")
+        # 表格形式输出
+        f.write(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10} {'状态':<15}\n")
+        f.write("-" * 80 + "\n")
+        
+        for result in results:
+            f.write(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10} {result['状态']:<15}\n")
+        
+        f.write("\n" + "=" * 50 + "\n")
+        f.write("详细结果 (JSON格式):\n")
+        f.write(json.dumps(results, ensure_ascii=False, indent=2))
     
-#     print(f"\n总体汇总结果已保存到: {summary_filename}")
-#     print("所有测试完成！")
+    print(f"结果已保存到: {filename}")
+    
+    # 打印汇总
+    print(f"\n问题规模 n={n}, m={m}, 目标: {objective_name} 的测试结果汇总:")
+    print(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10}")
+    print("-" * 70)
+    for result in results:
+        print(f"{result['配置']:<20} {str(result['运行时间(秒)']):<12} {str(result['TE']):<10} {str(result['Cmax']):<10} {str(result['TEC']):<10}")
+    
+    return results, filename
 
-# if __name__ == "__main__":
-#     run_all_experiments() 
+def run_all_experiments():
+    """运行所有问题规模和所有目标的实验"""
+
+    # 1. 创建本次实验的专属文件夹
+    current_time = time.strftime("%Y%m%d_%H%M%S")
+    results_dir = os.path.join("MIP", "results", f"run_{current_time}")
+    os.makedirs(results_dir, exist_ok=True)
+    print(f"实验结果将保存到: {results_dir}")
+    
+    # 定义要测试的问题规模
+    problem_sizes = [
+        (5, 3),
+        # (10, 5),
+        # (12, 5), # 您可以取消注释以测试更大规模的问题
+        # (15, 5),
+    ]
+    
+    objectives = ["Cmax", "TE", "TEC"]
+    
+    all_results = {}
+    
+    print("开始多规模、多目标有效不等式测试")
+    print("=" * 60)
+    
+    for obj in objectives:
+        all_results[obj] = {}
+        for n, m in problem_sizes:
+            try:
+                results, filename = run_experiment_for_size(n, m, obj, results_dir)
+                all_results[obj][f"n{n}_m{m}"] = {
+                    "problem_size": (n, m),
+                    "results": results,
+                    "filename": filename
+                }
+                print(f"\n完成问题规模 n={n}, m={m}, 目标 {obj} 的测试")
+                print("-" * 40)
+            except Exception as e:
+                print(f"问题规模 n={n}, m={m}, 目标 {obj} 测试失败: {str(e)}")
+    
+    # 保存总体汇总结果
+    summary_filename = os.path.join(results_dir, "summary_汇总.txt")
+    
+    with open(summary_filename, "w", encoding="utf-8") as f:
+        f.write("多规模、多目标有效不等式测试汇总\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 60 + "\n\n")
+        
+        for obj, obj_results in all_results.items():
+            f.write(f"目标函数: {obj}\n")
+            f.write("=" * 20 + "\n")
+            for size_key, data in obj_results.items():
+                n, m = data["problem_size"]
+                f.write(f"  问题规模: n={n}, m={m}\n")
+                f.write(f"  详细结果文件: {data['filename']}\n")
+                f.write("  " + "-" * 40 + "\n")
+                
+                # 找到当前目标下的最佳配置
+                best_config = None
+                best_val = float('inf')
+                best_status = None
+                
+                for result in data['results']:
+                    val = result.get(obj)
+                    if val != 'N/A' and isinstance(val, (int, float)):
+                        if val < best_val:
+                            best_val = val
+                            best_config = result['配置']
+                            best_status = result['状态']
+                
+                if best_config:
+                    f.write(f"  最佳 {obj} 配置: {best_config}, {obj}值: {best_val}, 状态: {best_status}\n")
+                else:
+                    f.write("  未找到可行解\n")
+                
+                f.write("\n")
+            f.write("\n")
+    
+    print(f"\n总体汇总结果已保存到: {summary_filename}")
+    print("所有测试完成！")
+
+if __name__ == "__main__":
+    run_all_experiments() 

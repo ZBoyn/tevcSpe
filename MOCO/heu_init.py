@@ -8,7 +8,6 @@ import yaml
 import os
 import sys
 
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from actor_critic import PFSPNet
 from calc import calculate_objectives_pytorch
 
@@ -24,7 +23,7 @@ class Initializer:
         with open('MOCO/params.yaml', 'r') as f:
             self.config = yaml.safe_load(f)
 
-    def _generate_sequence(self) -> np.ndarray:
+    def _generate_sequence(self, seq_type: str = "Min_Cmax") -> np.ndarray:
         """使用PFSPNET推理, 生成比较好的初始序列 sequence"""
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -62,6 +61,11 @@ class Initializer:
         actor_model = PFSPNet(encoder_args=encoder_config_args, decoder_args=decoder_config_args).to(device)
         
         inference_params = self.config['inference_params']
+        if seq_type == "Min_Cmax":
+            inference_params['model_path'] = inference_params['model_path_cmax']
+        elif seq_type == "Min_TEC":
+            inference_params['model_path'] = inference_params['model_path_tec']
+        
         model_path = os.path.join(os.path.dirname(__file__), inference_params['model_path'])
         actor_model.load_state_dict(torch.load(model_path, map_location=device))
         actor_model.eval()

@@ -33,5 +33,5 @@ pfspnet_model_config:
     ptr_dim: 25
 
 inference_params:
-  model_path: '../PFSPNET/models/best_actor_20j_5m.pt'
+  model_path_cmax: 'PFSPNET/models/best_actor_20j_5m.pt'
   num_samples: 128
