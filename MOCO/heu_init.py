@@ -94,6 +94,23 @@ class Initializer:
 
         return best_sequence
 
+    def _perturb_solution(self, solution: Solution, seq_swap_num: int = 2, mode_flip_num: int = 3, putoff_reset_prob: float = 0.1) -> Solution:
+        new_sol = solution.copy()
+        
+        # Sequence Perturbation
+        for _ in range(seq_swap_num):
+            idx1, idx2 = np.random.choice(self.problem.num_jobs, 2, replace=False)
+            new_sol.sequence[idx1], new_sol.sequence[idx2] = new_sol.sequence[idx2], new_sol.sequence[idx1]
+
+        # Mode Perturbation
+        for _ in range(mode_flip_num):
+            m_idx = np.random.randint(self.problem.num_machines)
+            j_idx = np.random.randint(self.problem.num_jobs)
+            new_sol.mode[j_idx, m_idx] = 1 - new_sol.mode[j_idx, m_idx]
+
+        new_sol = self.decoder.decode(new_sol)
+        return new_sol
+
     def generate_with_heuristic1(self) -> Solution:
         """ 生成Cmax最优的初始解 即在推理得到的sequence基础上 全部开启高功耗 零推迟"""
         best_sequence = self._generate_sequence()
@@ -111,14 +128,113 @@ class Initializer:
         return initial_solution
 
     def generate_with_heuristic2(self) -> Solution:
-        pass
+        """ 生成TEC最优的初始解 只对第一个遇到的高电价操作进行一次延迟 """
+        best_sequence = self._generate_sequence(seq_type="Min_Cmax")
+        low_modes = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        put_off_matrix = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
 
+        temp_solution = Solution(sequence=best_sequence.copy(), mode=low_modes.copy(), put_off=put_off_matrix.copy())
+        temp_solution = self.decoder.decode(temp_solution)
+
+        prices = self.problem.period_prices
+        max_price = np.max(prices)
+        high_price_periods_indices = np.where(prices == max_price)[0]
+
+        delay_applied = False
+        for job_idx in best_sequence:
+            for machine_idx in range(self.problem.num_machines):
+                start_time = temp_solution.start_times[job_idx, machine_idx]
+                current_period_idx = np.searchsorted(self.problem.period_start_times, start_time, side='right') - 1
+
+                if current_period_idx in high_price_periods_indices:
+                    next_cheaper_period_start = -1
+                    for p_idx in range(current_period_idx + 1, len(prices)):
+                        if prices[p_idx] < prices[current_period_idx]:
+                            next_cheaper_period_start = self.problem.period_start_times[p_idx]
+                            break
+                    
+                    if next_cheaper_period_start != -1:
+                        put_off_matrix[job_idx, machine_idx] = next_cheaper_period_start
+                        delay_applied = True
+                        break
+            
+            if delay_applied:
+                break
+
+        final_solution = Solution(
+            sequence=best_sequence.copy(),
+            mode=low_modes,
+            put_off=put_off_matrix
+        )
+        final_solution = self.decoder.decode(final_solution)
+        return final_solution
+
+    def generate_with_heuristic3(self) -> Solution:
+        """ 生成TE最优的初始解 """
+        best_sequence = self._generate_sequence(seq_type="Min_Cmax")
+        if self.problem.HIGH_MODE_POWER_FACTOR * self.problem.HIGH_MODE_SPEED_FACTOR > 1:
+            mode = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        else:
+            mode = np.ones((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        
+        no_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        initial_solution = Solution(
+            sequence=best_sequence.copy(),
+            mode=mode,
+            put_off=no_put_off
+        )
+        initial_solution = self.decoder.decode(initial_solution)
+        return initial_solution
+    
     def generate_randomly(self) -> Solution:
-        pass
+        """ 随机生成初始解 """
+        sequence = np.random.permutation(self.problem.num_jobs)
+        mode = np.random.randint(0, 2, size=(self.problem.num_jobs, self.problem.num_machines))
+        put_off = np.zeros(shape=(self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        
+        initial_solution = Solution(sequence=sequence, mode=mode, put_off=put_off)
+        initial_solution = self.decoder.decode(initial_solution)
+        return initial_solution
 
     def initialize_population(self, partial_solutions: List[Tuple[List[int], np.ndarray]] = None) -> List[Solution]:
+        population = []
+
+        # Heuristic Solution
         h1_count = self.params.get('h1_count', 1)
         h2_count = self.params.get('h2_count', 1)
+        h3_count = self.params.get('h3_count', 1)
+        # Perturbed Solution
+        h1_perturb_count = self.params.get('h1_perturb_count', 2)
+        h2_perturb_count = self.params.get('h2_perturb_count', 2)
+        h3_perturb_count = self.params.get('h3_perturb_count', 2)
+
+        s1 = self.generate_with_heuristic1()
+        for _ in range(h1_count):
+            population.append(s1.copy())
+        for _ in range(h1_perturb_count):
+            population.append(self._perturb_solution(s1))
+
+        s2 = self.generate_with_heuristic2()
+        for _ in range(h2_count):
+            population.append(s2.copy())
+        for _ in range(h2_perturb_count):
+            population.append(self._perturb_solution(s2))
+
+        s3 = self.generate_with_heuristic3()
+        for _ in range(h3_count):
+            population.append(s3.copy())
+        for _ in range(h3_perturb_count):
+            population.append(self._perturb_solution(s3))
+
+        current_pop_size = len(population)
+        num_random = self.pop_size - current_pop_size
+        for _ in range(max(0, num_random)):
+            population.append(self.generate_randomly())
+
+        return population[:self.pop_size]
+
+        
+
 
 """ 
 if __name__ == "__main__":
@@ -131,7 +247,7 @@ if __name__ == "__main__":
         period_prices=np.array([2, 8, 3]),
     )
     
-    initializer = Initializer(problem_definition, 10, {'h1_count': 1, 'h2_count': 1})
-    population = initializer.generate_with_heuristic1()
+    initializer = Initializer(problem_definition, 10, {'h1_count': 1, 'h2_count': 1, 'h3_count': 1, 'h1_perturb_count': 2, 'h2_perturb_count': 2, 'h3_perturb_count': 2})
+    population = initializer.initialize_population()
     print(population)
-"""
+ """

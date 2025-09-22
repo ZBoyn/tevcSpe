@@ -43,3 +43,17 @@ class Solution:
     def __post_init__(self):
         self.start_times = np.zeros_like(self.mode, dtype=float)
         self.completion_times = np.zeros_like(self.mode, dtype=float)
+
+    def copy(self):
+        new_solution = Solution(
+            sequence=self.sequence.copy(),
+            mode=self.mode.copy(),
+            put_off=self.put_off.copy()
+        )
+        if self.start_times is not None:
+            new_solution.start_times = self.start_times.copy()
+        if self.completion_times is not None:
+            new_solution.completion_times = self.completion_times.copy()
+        if self.objectives is not None:
+            new_solution.objectives = self.objectives.copy()
+        return new_solution
