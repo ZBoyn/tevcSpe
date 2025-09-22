@@ -7,7 +7,6 @@ Num_periods = 10
 
 data = torch.load(f"MIP/data/PyTorch/instance_{Num_jobs}j_{Num_machines}m_{Num_periods}k.pt", map_location="cpu")
 
-
 n_jobs = Num_jobs
 m_machines = Num_machines
 k_intervals = Num_periods

@@ -15,10 +15,18 @@ class Decoder:
             solution.objectives = results["objectives"]
         
         elif mode == "LocalOpTEC":
-            pass
+            results = self._calculate_schedule_and_objectives_LocalOpTEC(solution)
+            
+            solution.start_times = results["start_times"]
+            solution.completion_times = results["completion_times"]
+            solution.objectives = results["objectives"]
         
         elif mode == "RightOpTE":
-            pass
+            results = self._calculate_schedule_and_objectives_RightOpTE(solution)
+            
+            solution.start_times = results["start_times"]
+            solution.completion_times = results["completion_times"]
+            solution.objectives = results["objectives"]
         return solution
 
     def _calculate_schedule_and_objectives(self, solution: Solution) -> dict:
@@ -102,6 +110,90 @@ class Decoder:
             "objectives": np.array([round(cmax, 2), round(total_energy, 2), round(total_energy_cost, 2)])
         }
 
+    def _calculate_schedule_and_objectives_LocalOpTEC(self, solution: Solution) -> dict:
+        """ 右移策略 采用反向传播计算 优化TEC"""
+        sequence = solution.sequence
+        mode = solution.mode
+
+        num_jobs, num_machines = self.problem.num_jobs, self.problem.num_machines
+
+        # 计算基准最早完成时间
+        base_ect_matrix = solution.completion_times
+        # 记录最终调度的完成时间
+        final_ct_matrix = base_ect_matrix.copy()
+
+        for i in range(num_machines - 1, -1, -1):
+            for j_idx in range(num_jobs - 1, -1, -1):
+                job_id = sequence[j_idx]
+                proc_time = self.problem.processing_times[job_id, i] * self.problem.speed_factors[mode[job_id, i]]
+
+                # 确定当前工序(i, j)的调度时间窗 [est, ect]
+                est_from_prev_job = base_ect_matrix[sequence[j_idx - 1], i] if j_idx > 0 else 0
+                est_from_prev_machine = base_ect_matrix[job_id, i - 1] if i > 0 else 0
+                est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
+
+                next_job_id = sequence[j_idx + 1] if j_idx < num_jobs - 1 else -1
+                lct_from_next_job = final_ct_matrix[next_job_id, i] - (self.problem.processing_times[next_job_id, i] * self.problem.speed_factors[mode[next_job_id, i]]) if next_job_id != -1 else np.inf
+                lct_from_next_machine = final_ct_matrix[job_id, i + 1] - (self.problem.processing_times[job_id, i+1] * self.problem.speed_factors[mode[job_id, i+1]]) if i < num_machines - 1 else np.inf
+                lct = min(lct_from_next_job, lct_from_next_machine)
+                lst = lct - proc_time
+
+                if lst - est > 1e-6: # 检查是否有移动的空间
+                    best_start_time = self._find_best_start_time(est, lst, proc_time)
+                    final_ct_matrix[job_id, i] = best_start_time + proc_time
+
+        final_st_matrix = final_ct_matrix - (self.problem.processing_times * np.vectorize(self.problem.speed_factors.get)(mode))
+
+        processing_energy, processing_cost = 0.0, 0.0
+        machine_start_times = np.full(num_machines, np.inf)
+        machine_end_times = np.zeros(num_machines)
+
+        for job_id in sequence:
+            for m_id in range(num_machines):
+                start_time = final_st_matrix[job_id, m_id]
+                actual_proc_time = final_ct_matrix[job_id, m_id] - start_time
+                
+                machine_start_times[m_id] = min(machine_start_times[m_id], start_time)
+                machine_end_times[m_id] = max(machine_end_times[m_id], final_ct_matrix[job_id, m_id])
+                
+                mode_val = mode[job_id, m_id]
+                power_factor = self.problem.power_factors[mode_val]
+                actual_power = self.problem.power_consumption[job_id, m_id] * power_factor
+                op_energy = actual_proc_time * actual_power
+                
+                period_idx = np.searchsorted(self.problem.period_start_times, start_time, side='right') - 1
+                price = self.problem.period_prices[max(0, period_idx)]
+                
+                processing_energy += op_energy
+                processing_cost += op_energy * price
+
+        idle_energy, idle_cost = 0.0, 0.0
+        for m_id in range(num_machines):
+            if np.isinf(machine_start_times[m_id]): continue
+            
+            total_processing_time_on_machine = np.sum(final_ct_matrix[sequence, m_id] - final_st_matrix[sequence, m_id])
+            idle_time = (machine_end_times[m_id] - machine_start_times[m_id]) - total_processing_time_on_machine
+            idle_energy += idle_time * self.problem.IDLE_MODE_POWER
+
+            sorted_jobs = sorted(sequence, key=lambda j: final_st_matrix[j, m_id])
+
+            for k in range(len(sorted_jobs) - 1):
+                idle_start = final_ct_matrix[sorted_jobs[k], m_id]
+                idle_end = final_st_matrix[sorted_jobs[k+1], m_id]
+                idle_cost += self._get_cost_for_interval(idle_start, idle_end, self.problem.IDLE_MODE_POWER)
+
+        cmax = np.max(final_ct_matrix)
+        total_energy = processing_energy + idle_energy
+        total_energy_cost = processing_cost + idle_cost
+
+        return {
+            "start_times": final_st_matrix,
+            "completion_times": final_ct_matrix,
+            "objectives": np.array([round(cmax, 2), round(total_energy, 2), round(total_energy_cost, 2)])
+        }
+
+    def _calculate_schedule_and_objectives_RightOpTE(self, solution: Solution) -> dict:
+        pass
 
     def _find_valid_start_time(self, est: float, proc_time: float) -> float:
         current_start_time = est
@@ -129,6 +221,36 @@ class Decoder:
             cost += duration_in_period * power * price
             current_time += duration_in_period
         return cost
+
+    def _find_best_start_time(self, est: float, lst: float, proc_time: float) -> float:
+        best_start_time = est
+        min_price = float('inf')
+        
+        lct = lst + proc_time
+        start_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
+        end_period_idx = np.searchsorted(self.problem.period_start_times, lct - 1e-6, side='right') - 1
+        
+        start_period_idx = max(0, start_period_idx)
+        end_period_idx = max(0, end_period_idx)
+        end_period_idx = min(end_period_idx, len(self.problem.period_start_times) - 2)
+
+        for p_idx in range(start_period_idx, end_period_idx + 1):
+            period_start = self.problem.period_start_times[p_idx]
+            period_end = self.problem.period_start_times[p_idx + 1]
+
+            earliest_possible_in_period = max(est, period_start)
+            latest_possible_in_period = min(lst, period_end - proc_time)
+
+            if earliest_possible_in_period <= latest_possible_in_period:
+                current_price = self.problem.period_prices[p_idx]
+                
+                if current_price < min_price:
+                    min_price = current_price
+                    best_start_time = latest_possible_in_period
+                elif current_price == min_price:
+                    best_start_time = max(best_start_time, latest_possible_in_period)
+                    
+        return best_start_time
 
 """ 
 if __name__ == "__main__":
@@ -190,6 +312,22 @@ if __name__ == "__main__":
     objectives = decoded_solution.objectives
     start_times = decoded_solution.start_times
     complete_times = decoded_solution.completion_times
+    print(f"Cmax: {objectives[0]:.2f}")
+    print(f"TE: {objectives[1]:.2f}")
+    print(f"TEC: {objectives[2]:.2f}")
+    print(f"start_times: {start_times}")
+    print(f"complete_times: {complete_times}")
+    print("##########################################################")
+    
+    ################################################################
+    ######################### 测试右移 ##############################
+    print("-" * 20)
+    decoded_right_op_te = decoder.decode(te_solution, "LocalOpTEC")
+
+    objectives = decoded_right_op_te.objectives
+    start_times = decoded_right_op_te.start_times
+    complete_times = decoded_right_op_te.completion_times
+    print("TE RightShift Op:")
     print(f"Cmax: {objectives[0]:.2f}")
     print(f"TE: {objectives[1]:.2f}")
     print(f"TEC: {objectives[2]:.2f}")

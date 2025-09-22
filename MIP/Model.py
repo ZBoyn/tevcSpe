@@ -283,7 +283,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
             start_time = time.time()
             model, Cmax, TE_var, TEC_var = create_model_with_inequalities(config['config'], n, m)
             
-            # 根据目标名称设置目标函数
             if objective_name == "Cmax":
                 model.setObjective(Cmax, GRB.MINIMIZE)
             elif objective_name == "TE":
@@ -296,7 +295,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
             
             runtime = end_time - start_time
             
-            # 检查是否有可行解
             if model.status == GRB.OPTIMAL:
                 result = {
                     "配置": config['name'],
@@ -308,7 +306,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
                     "有效不等式": config['config']
                 }
             elif model.status == GRB.TIME_LIMIT and model.solCount > 0:
-                # 时间限制但找到了可行解
                 result = {
                     "配置": config['name'],
                     "运行时间(秒)": round(runtime, 2),
@@ -319,7 +316,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
                     "有效不等式": config['config']
                 }
             elif model.solCount > 0:
-                # 其他情况但有可行解
                 result = {
                     "配置": config['name'],
                     "运行时间(秒)": round(runtime, 2),
@@ -330,7 +326,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
                     "有效不等式": config['config']
                 }
             else:
-                # 没有找到任何可行解
                 result = {
                     "配置": config['name'],
                     "运行时间(秒)": round(runtime, 2),
@@ -357,7 +352,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
             results.append(result)
             print(f"错误: {config['name']} - {str(e)}")
     
-    # 保存结果到特定文件
     filename = os.path.join(results_dir, f"结果_{objective_name}_n{n}_m{m}.txt")
     
     with open(filename, "w", encoding="utf-8") as f:
@@ -367,7 +361,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
         f.write(f"问题规模: n={n}, m={m}\n")
         f.write("=" * 50 + "\n\n")
         
-        # 表格形式输出
         f.write(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10} {'状态':<15}\n")
         f.write("-" * 80 + "\n")
         
@@ -380,7 +373,6 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
     
     print(f"结果已保存到: {filename}")
     
-    # 打印汇总
     print(f"\n问题规模 n={n}, m={m}, 目标: {objective_name} 的测试结果汇总:")
     print(f"{'配置':<20} {'运行时间(秒)':<12} {'TE':<10} {'Cmax':<10} {'TEC':<10}")
     print("-" * 70)
@@ -392,17 +384,15 @@ def run_experiment_for_size(n, m, objective_name, results_dir):
 def run_all_experiments():
     """运行所有问题规模和所有目标的实验"""
 
-    # 1. 创建本次实验的专属文件夹
     current_time = time.strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join("MIP", "results", f"run_{current_time}")
     os.makedirs(results_dir, exist_ok=True)
     print(f"实验结果将保存到: {results_dir}")
     
-    # 定义要测试的问题规模
     problem_sizes = [
         (5, 3),
         # (10, 5),
-        # (12, 5), # 您可以取消注释以测试更大规模的问题
+        # (12, 5),
         # (15, 5),
     ]
     
@@ -428,7 +418,6 @@ def run_all_experiments():
             except Exception as e:
                 print(f"问题规模 n={n}, m={m}, 目标 {obj} 测试失败: {str(e)}")
     
-    # 保存总体汇总结果
     summary_filename = os.path.join(results_dir, "summary_汇总.txt")
     
     with open(summary_filename, "w", encoding="utf-8") as f:
@@ -446,7 +435,6 @@ def run_all_experiments():
                 f.write(f"  详细结果文件: {data['filename']}\n")
                 f.write("  " + "-" * 40 + "\n")
                 
-                # 找到当前目标下的最佳配置
                 best_config = None
                 best_val = float('inf')
                 best_status = None
