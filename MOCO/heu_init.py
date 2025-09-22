@@ -94,7 +94,7 @@ class Initializer:
 
         return best_sequence
 
-    def _perturb_solution(self, solution: Solution, seq_swap_num: int = 2, mode_flip_num: int = 3, putoff_reset_prob: float = 0.1) -> Solution:
+    def _perturb_solution(self, solution: Solution, seq_swap_num: int = 2, mode_flip_num: int = 3) -> Solution:
         new_sol = solution.copy()
         
         # Sequence Perturbation
@@ -247,7 +247,7 @@ if __name__ == "__main__":
         period_prices=np.array([2, 8, 3]),
     )
     
-    initializer = Initializer(problem_definition, 10, {'h1_count': 1, 'h2_count': 1, 'h3_count': 1, 'h1_perturb_count': 2, 'h2_perturb_count': 2, 'h3_perturb_count': 2})
+    initializer = Initializer(problem_definition, 3, {'h1_count': 1, 'h2_count': 1, 'h3_count': 1, 'h1_perturb_count': 0, 'h2_perturb_count': 0, 'h3_perturb_count': 0})
     population = initializer.initialize_population()
     print(population)
  """

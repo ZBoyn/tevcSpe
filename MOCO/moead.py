@@ -4,6 +4,9 @@ import math
 from itertools import combinations
 from pro_def import ProblemDefinition, Solution
 from decode import Decoder
+from typing import List
+
+from heu_init import Initializer
 from util.plot_pf import plot_pareto_front
 from util.results_manager import save_results
 
@@ -11,6 +14,7 @@ class MOEAD:
     def __init__(self,
                  problem: ProblemDefinition,
                  decoder: Decoder,
+                 initializer: Initializer,
                  population_size: int,
                  neighborhood_size: int,
                  max_generations: int,
@@ -19,6 +23,7 @@ class MOEAD:
 
         self.problem = problem
         self.decoder = decoder
+        self.initializer = initializer
         self.N = population_size
         self.T = neighborhood_size
         self.max_gen = max_generations
@@ -61,16 +66,57 @@ class MOEAD:
         distances = np.linalg.norm(self.weights[:, np.newaxis, :] - self.weights, axis=2)
         return np.argsort(distances, axis=1)[:, :self.T]
 
-    def _initialize_population(self):
-        """随机生成初始种群"""
-        population = []
-        for _ in range(self.N):
-            sequence = np.random.permutation(self.problem.num_jobs)
-            mode = np.random.randint(0, 2, size=(self.problem.num_jobs, self.problem.num_machines))
-            put_off = np.zeros(shape=(self.problem.num_jobs, self.problem.num_machines), dtype=int)
+    def _initialize_population(self) -> List[Solution]:
+        """ 使用 Initializer 和 智能分配 策略来初始化种群 """
+        print("##########################################################")
+        print("Initializing population with heuristic and advanced assignment strategy...")
+        population = [None] * self.N
+        
+        # Heuristic Rule Mapping: h1 -> Cmax, h3 -> TE, h2 -> TEC
+        idx_cmax = np.argmax(self.weights[:, 0])
+        idx_te   = np.argmax(self.weights[:, 1])
+        idx_tec  = np.argmax(self.weights[:, 2])
+        
+        specialist_indices = {idx_cmax, idx_te, idx_tec}
+        print(f"Specialist subproblems indices: Cmax->{idx_cmax}, TE->{idx_te}, TEC->{idx_tec}")
+
+        # Generate elite solutions and directly assign
+        s_cmax = self.initializer.generate_with_heuristic1()
+        s_te = self.initializer.generate_with_heuristic3()
+        s_tec = self.initializer.generate_with_heuristic2()
+        
+        population[idx_cmax] = s_cmax
+        population[idx_te] = s_te
+        population[idx_tec] = s_tec
+        
+        filler_pool = []
+        for _ in range(self.initializer.params.get('h1_perturb_count', 0)):
+            filler_pool.append(self.initializer._perturb_solution(s_cmax))
+        for _ in range(self.initializer.params.get('h2_perturb_count', 0)):
+             filler_pool.append(self.initializer._perturb_solution(s_tec))
+        for _ in range(self.initializer.params.get('h3_perturb_count', 0)):
+             filler_pool.append(self.initializer._perturb_solution(s_te))
+
+        num_specialists = len(specialist_indices)
+        num_fillers_needed = self.N - num_specialists
+        num_randoms_needed = num_fillers_needed - len(filler_pool)
+
+        for _ in range(max(0, num_randoms_needed)):
+            filler_pool.append(self.initializer.generate_randomly())
             
-            sol = Solution(sequence=sequence, mode=mode, put_off=put_off)
-            population.append(self.decoder.decode(sol))
+        random.shuffle(filler_pool)
+
+        filler_idx = 0
+        for i in range(self.N):
+            if population[i] is None:
+                if filler_idx < len(filler_pool):
+                    population[i] = filler_pool[filler_idx]
+                    filler_idx += 1
+                else:
+                    population[i] = self.initializer.generate_randomly()
+
+        print(population)
+        
         return population
 
     def _update_ideal_point_with_population(self):
@@ -171,9 +217,21 @@ if __name__ == "__main__":
         "crossover_rate": 0.8,
         "mutation_rate": 0.1
     }
+
+    init_params = {
+        'h1_count': 1,           
+        'h2_count': 1,           
+        'h3_count': 1,           
+        'h1_perturb_count': 5,  # Cmax
+        'h2_perturb_count': 5,  # TEC
+        'h3_perturb_count': 5,  # TE
+    }
     
+    initializer = Initializer(problem, params["population_size"], init_params)
+
     moead = MOEAD(problem, 
                   decoder, 
+                  initializer,
                   params["population_size"], 
                   params["neighborhood_size"], 
                   params["max_generations"], 
