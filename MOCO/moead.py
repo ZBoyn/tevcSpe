@@ -31,14 +31,21 @@ class MOEAD:
         self.mr = mutation_rate
         self.num_objectives = 3
 
+        # 初始化权重向量
         self.weights = self._initialize_weights()
 
+        # 初始化邻域
         self.neighborhoods = self._calculate_neighborhoods()
 
+        # 初始化种群
         self.population = self._initialize_population()
-
+        
+        # 初始化理想点和天底点
         self.z = np.full(self.num_objectives, np.inf)
         self._update_ideal_point_with_population()
+
+        self.z_nad = np.full(self.num_objectives, -np.inf)
+        self._update_nadir_point_with_population()
 
     def _initialize_weights(self) -> np.ndarray:
         """使用 Das-Dennis 方法生成均匀分布的权重向量"""
@@ -115,7 +122,7 @@ class MOEAD:
                 else:
                     population[i] = self.initializer.generate_randomly()
 
-        print(population)
+        # print(population)
         
         return population
 
@@ -128,9 +135,18 @@ class MOEAD:
         """用新解的目标值更新理想点Z"""
         self.z = np.min(np.vstack((self.z, new_objectives)), axis=0)
 
+    def _update_nadir_point_with_population(self):
+        """用当前整个种群的目标值来更新天底点"""
+        objectives = np.array([sol.objectives for sol in self.population])
+        self.z_nad = np.max(objectives, axis=0)
+        
     def _tchebycheff(self, objectives: np.ndarray, weight: np.ndarray) -> float:
-        """计算 Tchebycheff 聚合函数值"""
-        return np.max(np.abs(objectives - self.z) * weight)
+        """计算包含动态归一化的 Tchebycheff 聚合函数值"""
+        norm_den = self.z_nad - self.z
+        norm_den[norm_den < 1e-6] = 1e-6
+        
+        normalized_objectives = (objectives - self.z) / norm_den
+        return np.max(normalized_objectives * weight)
 
     def _genetic_operators(self, parent1: Solution, parent2: Solution) -> Solution:
         """
@@ -173,6 +189,7 @@ class MOEAD:
     
     def run(self):
         for gen in range(self.max_gen):
+            self._update_nadir_point_with_population()
             for i in range(self.N):
                 # 1. 从邻域中选择父母
                 p_indices = np.random.choice(self.neighborhoods[i], 2, replace=False)
