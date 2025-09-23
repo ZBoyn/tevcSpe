@@ -39,10 +39,13 @@ class Solution:
     start_times: np.ndarray = field(init=False, default=None)
     completion_times: np.ndarray = field(init=False, default=None) # C[N, M]
     objectives: np.ndarray = field(init=False, default_factory=lambda: np.full(3, np.inf)) # [Cmax, TEC, TE]
+    prev: np.ndarray = field(init=False, default=None) # [N, M] 记录前驱         # S源点 H纵向 B横向 T时间
+    block: np.ndarray = field(init=False, default=None) # [N, M] 记录哪些工件是一个块
     
     def __post_init__(self):
         self.start_times = np.zeros_like(self.mode, dtype=float)
         self.completion_times = np.zeros_like(self.mode, dtype=float)
+        self.prev = np.zeros_like(self.mode, dtype=object)
 
     def copy(self):
         new_solution = Solution(
@@ -54,6 +57,8 @@ class Solution:
             new_solution.start_times = self.start_times.copy()
         if self.completion_times is not None:
             new_solution.completion_times = self.completion_times.copy()
+        if self.prev is not None:
+            new_solution.prev = self.prev.copy()
         if self.objectives is not None:
             new_solution.objectives = self.objectives.copy()
         return new_solution
