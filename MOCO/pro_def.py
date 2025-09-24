@@ -40,7 +40,7 @@ class Solution:
     completion_times: np.ndarray = field(init=False, default=None) # C[N, M]
     objectives: np.ndarray = field(init=False, default_factory=lambda: np.full(3, np.inf)) # [Cmax, TEC, TE]
     prev: np.ndarray = field(init=False, default=None) # [N, M] 记录前驱         # S源点 H纵向 B横向 T时间
-    block: np.ndarray = field(init=False, default=None) # [N, M] 记录哪些工件是一个块
+    # block: np.ndarray = field(init=False, default=None) # [N, M] 记录哪些工件是一个块
     
     def __post_init__(self):
         self.start_times = np.zeros_like(self.mode, dtype=float)
