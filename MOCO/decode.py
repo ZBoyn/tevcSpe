@@ -73,35 +73,38 @@ class Decoder:
                 start_times[job_id, m_id] = actual_start_time
                 completion_times[job_id, m_id] = actual_start_time + actual_proc_time
 
-                ####################################################
-                ########### 初始化前驱矩阵 ##########################
-                ####################################################
-                # 检查是否由 时间约束 (putoff 或 跨时段) 导致延迟
+                # ##############################################################
+                # ######################### 确定前驱 ############################
+                # ##############################################################
+                
+                # 步骤A: 首先确定非时间的 "底层" 前驱 (B, H, or S)
+                underlying_pred = ""
+                if abs(est - est_from_prev_job) < epsilon and j_idx > 0:
+                    underlying_pred = "B"
+                elif abs(est - est_from_prev_machine) < epsilon and m_id > 0:
+                    underlying_pred = "H"
+                elif abs(est - self.problem.release_times[job_id]) < epsilon:
+                    underlying_pred = "S"
+                else: # 处理多个前驱同时到达的平局情况
+                    if j_idx > 0 and est_from_prev_job >= est_from_prev_machine and est_from_prev_job >= self.problem.release_times[job_id]:
+                        underlying_pred = "B"
+                    elif m_id > 0 and est_from_prev_machine >= est_from_prev_job and est_from_prev_machine >= self.problem.release_times[job_id]:
+                        underlying_pred = "H"
+                    else:
+                        underlying_pred = "S"
+
+                # 步骤B: 检查是否存在时间延迟，并据此修正前驱类型
                 if actual_start_time > est + epsilon:
-                    # 对应图中的绿色虚拟节点，表示时间限制是其前驱
-                    solution.prev[job_id, m_id] = "T"
+                    if delayed_est > est + epsilon:
+                        solution.prev[job_id, m_id] = "TP"
+                    else:
+                        solution.prev[job_id, m_id] = "T" + underlying_pred
                 else:
-                    # 如果没有时间延迟，则根据 est 的来源确定前驱
-                    if abs(est - est_from_prev_job) < epsilon and j_idx > 0:
-                        # 前驱是同一台机器上的前一个工件 (纵向/块约束)
-                        solution.prev[job_id, m_id] = "B" # Block
-                    elif abs(est - est_from_prev_machine) < epsilon and m_id > 0:
-                        # 前驱是同一个工件的前一道工序 (水平/工艺约束)
-                        solution.prev[job_id, m_id] = "H" # Horizontal
-                    elif abs(est - self.problem.release_times[job_id]) < epsilon:
-                        # 由释放时间决定，前驱是虚拟源点 S
-                        solution.prev[job_id, m_id] = "S" # Source
-                    else: # 兜底，理论上不应该发生，除非有多个前驱同时到达
-                        # 默认优先级： 纵向 > 横向 > 释放时间
-                        if j_idx > 0 and est_from_prev_job >= est_from_prev_machine and est_from_prev_job >= self.problem.release_times[job_id]:
-                            solution.prev[job_id, m_id] = "B"
-                        elif m_id > 0 and est_from_prev_machine >= est_from_prev_job and est_from_prev_machine >= self.problem.release_times[job_id]:
-                            solution.prev[job_id, m_id] = "H"
-                        else:
-                            solution.prev[job_id, m_id] = "S"
-                ####################################################
-                ########### 结束初始化前驱矩阵 #####################
-                ####################################################
+                    solution.prev[job_id, m_id] = underlying_pred
+                
+                # ##############################################################
+                # ######################### 结束确定前驱 #########################
+                # ##############################################################
 
                 machine_start_times[m_id] = min(machine_start_times[m_id], actual_start_time)
                 machine_end_times[m_id] = max(machine_end_times[m_id], completion_times[job_id, m_id])
@@ -288,7 +291,7 @@ class Decoder:
                     
         return best_start_time
 
-
+""" 
 if __name__ == "__main__":
     from data_manager import load_instance
     # Problem: 当前的编码方式并不能完全的解码出所有信息 eg.
@@ -323,6 +326,10 @@ if __name__ == "__main__":
     objectives = decoded_solution.objectives
     # start_times = decoded_solution.start_times
     # complete_times = decoded_solution.completion_times
+    # 验算通过
+    print(f"start_times:{decoded_solution.start_times}")
+    print(f"completion_times:{decoded_solution.completion_times}")
+    print(f"block:{decoded_solution.block}")
     print(f"prev:{decoded_solution.prev}")
     print(f"Cmax: {objectives[0]:.2f}")
     print(f"TE: {objectives[1]:.2f}")
@@ -349,6 +356,10 @@ if __name__ == "__main__":
     objectives = decoded_solution.objectives
     start_times = decoded_solution.start_times
     complete_times = decoded_solution.completion_times
+    print(f"start_times:{decoded_solution.start_times}")
+    print(f"completion_times:{decoded_solution.completion_times}")
+    print(f"block:{decoded_solution.block}")
+    print(f"prev:{decoded_solution.prev}")
     print(f"Cmax: {objectives[0]:.2f}")
     print(f"TE: {objectives[1]:.2f}")
     print(f"TEC: {objectives[2]:.2f}")
@@ -364,10 +375,15 @@ if __name__ == "__main__":
     objectives = decoded_right_op_te.objectives
     start_times = decoded_right_op_te.start_times
     complete_times = decoded_right_op_te.completion_times
+    print(f"start_times:{decoded_right_op_te.start_times}")
+    print(f"completion_times:{decoded_right_op_te.completion_times}")
+    print(f"block:{decoded_right_op_te.block}")
     print("TE RightShift Op:")
+    print(f"prev:{decoded_right_op_te.prev}")
     print(f"Cmax: {objectives[0]:.2f}")
     print(f"TE: {objectives[1]:.2f}")
     print(f"TEC: {objectives[2]:.2f}")
     print(f"start_times: {start_times}")
     print(f"complete_times: {complete_times}")
     print("##########################################################")
+ """
