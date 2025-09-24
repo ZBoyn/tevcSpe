@@ -140,6 +140,90 @@ class Operation:
         else:
             raise ValueError("Method must be 'longest' or 'random'.")
 
+    def sequence_OX(self, parent1: Solution, parent2: Solution, mode: str = 'normal') -> tuple[Solution, Solution]:
+        p1_seq = list(parent1.sequence)
+        p2_seq = list(parent2.sequence)
+        size = len(p1_seq)
+        
+        child1_seq = [None] * size
+        child2_seq = [None] * size
+
+        if mode == 'block':
+            blocks1 = self.select_blocks(self._find_common_blocks_optimized(parent1), 1, 'longest')
+            if not blocks1:
+                return self.sequence_OX(parent1, parent2, mode='normal')
+            
+            block = blocks1[0]
+            start_job = block[0]
+            start = p1_seq.index(start_job)
+            end = start + len(block) - 1
+
+        elif mode == 'normal':
+            start, end = sorted(random.sample(range(size), 2))
+        else:
+            raise ValueError("Mode must be 'block' or 'normal'.")
+
+        child1_seq[start:end+1] = p1_seq[start:end+1]
+        child2_seq[start:end+1] = p2_seq[start:end+1]
+
+        p2_genes_for_c1 = [gene for gene in p2_seq if gene not in child1_seq]
+        c1_fill_idx = (end + 1) % size
+        for gene in p2_genes_for_c1:
+            while child1_seq[c1_fill_idx] is not None:
+                c1_fill_idx = (c1_fill_idx + 1) % size
+            child1_seq[c1_fill_idx] = gene
+
+        p1_genes_for_c2 = [gene for gene in p1_seq if gene not in child2_seq]
+        c2_fill_idx = (end + 1) % size
+        for gene in p1_genes_for_c2:
+            while child2_seq[c2_fill_idx] is not None:
+                c2_fill_idx = (c2_fill_idx + 1) % size
+            child2_seq[c2_fill_idx] = gene
+            
+        child1, child2 = parent1.copy(), parent2.copy()
+        child1.sequence = np.array(child1_seq)
+        child2.sequence = np.array(child2_seq)
+        
+        return child1, child2
+
+    def sequence_MUT(self, solution: Solution) -> Solution:
+        """ 序列变异 """
+        child = solution.copy()
+        i, j = random.sample(range(self.problem.num_jobs), 2)
+        child.sequence[i], child.sequence[j] = child.sequence[j], child.sequence[i]
+        return child
+    
+    def mode_OX(self, parent1: Solution, parent2: Solution) -> tuple[Solution, Solution]:
+        """ 修正后的模式交叉，使用均匀交叉 """
+        child1, child2 = parent1.copy(), parent2.copy()
+        
+        mask = np.random.rand(*parent1.mode.shape) < 0.5
+        
+        child1.mode = np.where(mask, parent1.mode, parent2.mode)
+        child2.mode = np.where(mask, parent2.mode, parent1.mode)
+        
+        return child1, child2
+
+    def mode_MUT(self, solution: Solution, high_probability: float = 0.9) -> Solution:
+        child = solution.copy()
+        
+        decoded_results = self.decoder._calculate_schedule_and_objectives(child)
+        
+        child.prev = decoded_results['prev']
+
+        critical_path = self._find_critical_path(child)
+        non_critical_ops = set(np.ndindex(child.mode.shape)) - set(critical_path)
+
+        for job_id, machine_id in critical_path:
+            if random.random() < high_probability:
+                child.mode[job_id, machine_id] = 1
+        
+        for job_id, machine_id in non_critical_ops:
+            if random.random() < 0.1:
+                 child.mode[job_id, machine_id] = 1
+
+        return child
+
 """ 
 if __name__ == "__main__":
     from data_manager import load_instance
