@@ -1,5 +1,4 @@
 import torch
-import bisect
 
 def calculate_objectives_pytorch(
     job_sequences,       # (B, N)

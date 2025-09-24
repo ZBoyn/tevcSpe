@@ -1,4 +1,3 @@
-import re
 import numpy as np
 from pro_def import ProblemDefinition, Solution
 

@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 class JobProcessingTimeEncoderForDecoder(nn.Module):
     def __init__(self, scalar_input_dim=1, embedding_dim=64, hidden_dim=128, rnn_type='RNN', num_rnn_layers=1):

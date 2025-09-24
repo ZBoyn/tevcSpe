@@ -1,4 +1,3 @@
-from uu import decode
 import numpy as np
 from pro_def import ProblemDefinition, Solution
 from decode import Decoder
@@ -6,7 +5,6 @@ from typing import List, Tuple
 import torch
 import yaml
 import os
-import sys
 
 from actor_critic import PFSPNet
 from calc import calculate_objectives_pytorch
