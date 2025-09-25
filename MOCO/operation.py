@@ -140,7 +140,7 @@ class Operation:
         else:
             raise ValueError("Method must be 'longest' or 'random'.")
 
-    def sequence_OX(self, parent1: Solution, parent2: Solution, mode: str = 'normal') -> tuple[Solution, Solution]:
+    def sequence_OX(self, parent1: Solution, parent2: Solution, mode: str = 'normal'):
         p1_seq = list(parent1.sequence)
         p2_seq = list(parent2.sequence)
         size = len(p1_seq)
@@ -193,7 +193,7 @@ class Operation:
         child.sequence[i], child.sequence[j] = child.sequence[j], child.sequence[i]
         return child
     
-    def mode_OX(self, parent1: Solution, parent2: Solution) -> tuple[Solution, Solution]:
+    def mode_OX(self, parent1: Solution, parent2: Solution):
         """ 修正后的模式交叉，使用均匀交叉 """
         child1, child2 = parent1.copy(), parent2.copy()
         
@@ -207,9 +207,9 @@ class Operation:
     def mode_MUT(self, solution: Solution, high_probability: float = 0.9) -> Solution:
         child = solution.copy()
         
-        decoded_results = self.decoder._calculate_schedule_and_objectives(child)
+        decoded_results = self.decoder.decode(child)
         
-        child.prev = decoded_results['prev']
+        child.prev = decoded_results.prev
 
         critical_path = self._find_critical_path(child)
         non_critical_ops = set(np.ndindex(child.mode.shape)) - set(critical_path)

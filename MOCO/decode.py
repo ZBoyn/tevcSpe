@@ -12,6 +12,7 @@ class Decoder:
             solution.start_times = results["start_times"]
             solution.completion_times = results["completion_times"]
             solution.objectives = results["objectives"]
+            # solution.prev = results["prev"]
         
         elif mode == "LocalOpTEC":
             results = self._calculate_schedule_and_objectives_LocalOpTEC(solution)
@@ -145,7 +146,8 @@ class Decoder:
         return {
             "start_times": start_times,
             "completion_times": completion_times,
-            "objectives": np.array([round(cmax, 2), round(total_energy, 2), round(total_energy_cost, 2)])
+            "objectives": np.array([round(cmax, 2), round(total_energy, 2), round(total_energy_cost, 2)]),
+            "prev": solution.prev
         }
 
     def _calculate_schedule_and_objectives_LocalOpTEC(self, solution: Solution) -> dict:

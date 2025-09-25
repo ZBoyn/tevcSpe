@@ -12,9 +12,9 @@ from calc import calculate_objectives_pytorch
 
 class Initializer:
     """根据不同策略初始化解的种群"""
-    def __init__(self, problem_definition: ProblemDefinition, pop_size: int, init_params: dict):
+    def __init__(self, problem_definition: ProblemDefinition, moead_params: dict, init_params: dict):
         self.problem = problem_definition
-        self.pop_size = pop_size
+        self.pop_size = moead_params["population_size"]
         self.params = init_params
         self.decoder = Decoder(problem_definition)
         

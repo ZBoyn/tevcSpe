@@ -2,35 +2,43 @@ import numpy as np
 import random
 import math
 from itertools import combinations
+from typing import List
+from tqdm import tqdm
+
 from pro_def import ProblemDefinition, Solution
 from decode import Decoder
-from typing import List
-
 from heu_init import Initializer
+from operation import Operation
 from util.plot_pf import plot_pareto_front
 from util.results_manager import save_results
 
 class MOEAD:
     def __init__(self,
                  problem: ProblemDefinition,
+                 operation: Operation,
                  decoder: Decoder,
                  initializer: Initializer,
-                 population_size: int,
-                 neighborhood_size: int,
-                 max_generations: int,
-                 crossover_rate: float,
-                 mutation_rate: float):
+                 moead_params: dict,
+
+                 
+    ):
 
         self.problem = problem
+        self.operation = operation
         self.decoder = decoder
         self.initializer = initializer
-        self.N = population_size
-        self.T = neighborhood_size
-        self.max_gen = max_generations
-        self.cr = crossover_rate
-        self.mr = mutation_rate
+        self.N = moead_params["population_size"]
+        self.T = moead_params["neighborhood_size"]
+        self.max_gen = moead_params["max_generations"]
+        self.cr = moead_params["crossover_rate"]
+        self.mr = moead_params["mutation_rate"]
         self.num_objectives = 3
 
+        self.block_cr_prob = moead_params["block_crossover_prob"]
+        self.mode_repair_prob = moead_params["mode_repair_prob"]
+        self.ls_prob = moead_params["local_search_prob"]
+        self.mode_repair_high_probability = moead_params["mode_repair_high_probability"]
+        
         # 初始化权重向量
         self.weights = self._initialize_weights()
 
@@ -40,7 +48,7 @@ class MOEAD:
         # 初始化种群
         self.population = self._initialize_population()
         
-        # 初始化理想点和天底点
+        # 初始化边界
         self.z = np.full(self.num_objectives, np.inf)
         self._update_ideal_point_with_population()
 
@@ -90,7 +98,8 @@ class MOEAD:
         # Generate elite solutions and directly assign
         s_cmax = self.initializer.generate_with_heuristic1()
         s_te = self.initializer.generate_with_heuristic3()
-        s_tec = self.initializer.generate_with_heuristic2()
+        # s_tec = self.initializer.generate_with_heuristic2()
+        s_tec = self.initializer.generate_with_heuristic3()
         
         population[idx_cmax] = s_cmax
         population[idx_te] = s_te
@@ -136,7 +145,7 @@ class MOEAD:
         self.z = np.min(np.vstack((self.z, new_objectives)), axis=0)
 
     def _update_nadir_point_with_population(self):
-        """用当前整个种群的目标值来更新天底点"""
+        """用当前整个种群的目标值来更新最差边界"""
         objectives = np.array([sol.objectives for sol in self.population])
         self.z_nad = np.max(objectives, axis=0)
         
@@ -148,47 +157,41 @@ class MOEAD:
         normalized_objectives = (objectives - self.z) / norm_den
         return np.max(normalized_objectives * weight)
 
-    def _genetic_operators(self, parent1: Solution, parent2: Solution) -> Solution:
-        """
-        执行交叉和变异操作生成一个子代.
-        
-        注意：这里的实现是示例，你需要根据你的问题特性选择或设计更优的操作.
-        """
-        # --- 交叉 (Crossover) ---
-        # 工件序列 (Sequence) 使用顺序交叉 (Order Crossover - OX1)
-        start, end = sorted(random.sample(range(self.problem.num_jobs), 2))
-        child_seq = np.full(self.problem.num_jobs, -1, dtype=int)
-        child_seq[start:end+1] = parent1.sequence[start:end+1]
-        
-        p2_idx = 0
-        for i in range(self.problem.num_jobs):
-            if child_seq[i] == -1:
-                while parent2.sequence[p2_idx] in child_seq:
-                    p2_idx += 1
-                child_seq[i] = parent2.sequence[p2_idx]
-        
-        # 模式 (Mode) 和延迟 (put_off) 使用均匀交叉
-        child_mode = np.where(np.random.rand(self.problem.num_jobs, self.problem.num_machines) < 0.5, parent1.mode, parent2.mode)
-        child_putoff = np.where(np.random.rand(self.problem.num_jobs, self.problem.num_machines) < 0.5, parent1.put_off, parent2.put_off)
+    def _generate_offspring(self, parent1: Solution, parent2: Solution) -> Solution:
+        child = Solution(sequence=np.copy(parent1.sequence), 
+                        mode=np.copy(parent1.mode), 
+                        put_off=np.copy(parent1.put_off))
 
-        # --- 变异 (Mutation) ---
+        if random.random() < self.cr:
+            crossover_mode = 'block' if random.random() < self.block_cr_prob else 'normal'
+            try:
+                child1, _ = self.operation.sequence_OX(parent1, parent2, mode=crossover_mode)
+                child.sequence = child1.sequence
+            except Exception as e:
+                child1, _ = self.operation.sequence_OX(parent1, parent2, mode='normal')
+                child.sequence = child1.sequence
+
         if random.random() < self.mr:
-            # 序列变异：交换两个位置
-            i, j = random.sample(range(self.problem.num_jobs), 2)
-            child_seq[i], child_seq[j] = child_seq[j], child_seq[i]
+            child = self.operation.sequence_MUT(child)
 
-            # 模式变异：随机翻转一位
-            job_idx, machine_idx = random.randint(0, self.problem.num_jobs-1), random.randint(0, self.problem.num_machines-1)
-            child_mode[job_idx, machine_idx] = 1 - child_mode[job_idx, machine_idx]
+        mask = np.random.rand(*parent1.mode.shape) < 0.5
+        child.mode = np.where(mask, parent1.mode, parent2.mode)
 
-            # put_off 变异：随机赋予一个新值 (例如0-3)
-            job_idx, machine_idx = random.randint(0, self.problem.num_jobs-1), random.randint(0, self.problem.num_machines-1)
-            child_putoff[job_idx, machine_idx] = random.randint(0, 3)
+        if random.random() < self.mode_repair_prob:
+            child = self.operation.mode_MUT(child, self.mode_repair_high_probability)
             
-        return Solution(sequence=child_seq, mode=child_mode, put_off=child_putoff)
+        mask_putoff = np.random.rand(*parent1.put_off.shape) < 0.5
+        child.put_off = np.where(mask_putoff, parent1.put_off, parent2.put_off)
+        
+        if random.random() < self.ls_prob:
+            ls_operator = random.choice(["LocalOpTEC"])
+            
+            child = self.decoder.decode(child, ls_operator)
+
+        return child
     
     def run(self):
-        for gen in range(self.max_gen):
+        for gen in tqdm(range(self.max_gen), desc="MOEAD Generation"):
             self._update_nadir_point_with_population()
             for i in range(self.N):
                 # 1. 从邻域中选择父母
@@ -197,7 +200,7 @@ class MOEAD:
                 parent2 = self.population[p_indices[1]]
 
                 # 2. 生成子代并解码
-                child = self._genetic_operators(parent1, parent2)
+                child = self._generate_offspring(parent1, parent2)
                 child = self.decoder.decode(child)
 
                 # child = self.decoder.decode(child, "LocalOpTEC")
@@ -214,9 +217,6 @@ class MOEAD:
                     if new_obj_val < current_obj_val:
                         self.population[j] = child
             
-            if (gen + 1) % 10 == 0:
-                print(f"Generation {gen + 1}/{self.max_gen} completed.")
-        
         return self.population
 
 if __name__ == "__main__":
@@ -226,13 +226,18 @@ if __name__ == "__main__":
     problem = load_instance(f"MOCO\\data\\{instance_name}.npz")
     
     decoder = Decoder(problem)
+    operation = Operation(problem)
     
-    params = {
+    moead_params = {
         "population_size": 100,
         "neighborhood_size": 20,
         "max_generations": 100,
         "crossover_rate": 0.8,
-        "mutation_rate": 0.1
+        "mutation_rate": 0.1,
+        "block_crossover_prob": 0.2,
+        "mode_repair_prob": 0.8,
+        "local_search_prob": 0.3,
+        "mode_repair_high_probability": 0.9
     }
 
     init_params = {
@@ -244,22 +249,20 @@ if __name__ == "__main__":
         'h3_perturb_count': 5,  # TE
     }
     
-    initializer = Initializer(problem, params["population_size"], init_params)
+    initializer = Initializer(problem, moead_params, init_params)
 
     moead = MOEAD(problem, 
-                  decoder, 
+                  operation,
+                  decoder,
                   initializer,
-                  params["population_size"], 
-                  params["neighborhood_size"], 
-                  params["max_generations"], 
-                  params["crossover_rate"], 
-                  params["mutation_rate"])
+                  moead_params,
+    )
     
     population = moead.run()
     
     print("MOEAD run finished.")
     
-    save_results(population, params, instance_name)
+    save_results(population, moead_params, instance_name)
     
     plot_pareto_front(population, instance_name)
     
