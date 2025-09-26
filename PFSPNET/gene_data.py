@@ -1,23 +1,36 @@
 import torch
 import os
+import numpy as np
 
 def generate_and_save_instance(
     num_jobs, 
     num_machines, 
     k_intervals, 
+    num_days=1,
     save_path='.'
 ):
     os.makedirs(save_path, exist_ok=True)
 
     device = torch.device("cpu")
 
-    P_instance = torch.rand(num_jobs, num_machines, device=device) * 20 + 1
-    E_instance = torch.rand(num_jobs, num_machines, device=device) * 10
-    R_instance = torch.randint(0, 50, (num_jobs,), device=device, dtype=torch.float)
+    P_instance = torch.rand((num_jobs, num_machines), device=device) * 9 + 1
+    E_instance = torch.rand((num_jobs, num_machines), device=device) * 4 + 1
+    R_instance = torch.randint(0, 5 * num_jobs, (num_jobs,), device=device, dtype=torch.float)
     
-    u_starts = torch.arange(0, 50 * k_intervals, 50, device=device, dtype=torch.float)
-    s_durations = torch.full((k_intervals,), 50, device=device)
-    f_factors = torch.randint(1, 6, (k_intervals,), device=device, dtype=torch.float)
+    s_durations_oneday = torch.randint(
+        low=20, high=81, size=(k_intervals,), device=device, dtype=torch.float
+    )
+    f_factors_oneday = torch.randint(1, 7, (k_intervals,), device=device, dtype=torch.float)
+
+    s_durations = s_durations_oneday.repeat(num_days)
+    f_factors = f_factors_oneday.repeat(num_days)
+    
+    u_starts = torch.cat([
+        torch.tensor([0.0], device=device),
+        torch.cumsum(s_durations[:-1], dim=0)
+    ])
+    
+    total_k_intervals = k_intervals * num_days
 
     instance_data = {
         'P_instance': P_instance,
@@ -28,25 +41,42 @@ def generate_and_save_instance(
         'f_factors': f_factors,
         'num_jobs': num_jobs,
         'num_machines': num_machines,
-        'k_intervals': k_intervals
+        'k_intervals': total_k_intervals 
     }
     
-    file_name = f"instance_{num_jobs}j_{num_machines}m_{k_intervals}k.pt"
+    instance_id = np.random.randint(10000, 99999)
+    file_name = f"instance_{num_jobs}j_{num_machines}m_{k_intervals}k_{num_days}d_{instance_id}.pt"
     full_path = os.path.join(save_path, file_name)
     
     torch.save(instance_data, full_path)
     return full_path
 
 if __name__ == '__main__':
-    config_num_jobs = 20
-    config_num_machines = 5
-    config_k_intervals = 10
+    base_save_directory = 'pfspnet/data'
     
-    save_directory = 'pfspnet/data'
+    job_sizes = [20, 50]
+    machine_sizes = [5, 10]
+    instances_per_size = 100
+    config_num_days = 3
+
+    total_generated = 0
+    for n_jobs in job_sizes:
+        for n_machines in machine_sizes:
+            size_dir_name = f"{n_jobs}j_{n_machines}m"
+            
+            save_directory = os.path.join(base_save_directory, 'train', size_dir_name)
+            
+            print(f"--- Generating {instances_per_size} instances for size {n_jobs}j x {n_machines}m ---")
+            for i in range(instances_per_size):
+                config_k_intervals_per_day = np.random.randint(3, 6)
+                
+                generate_and_save_instance(
+                    num_jobs=n_jobs,
+                    num_machines=n_machines,
+                    k_intervals=config_k_intervals_per_day,
+                    num_days=config_num_days,
+                    save_path=save_directory
+                )
+                total_generated += 1
     
-    generate_and_save_instance(
-        num_jobs=config_num_jobs,
-        num_machines=config_num_machines,
-        k_intervals=config_k_intervals,
-        save_path=save_directory
-    )
+    print(f"\n✅ Generation complete. Total instances generated: {total_generated}")

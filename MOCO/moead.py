@@ -3,13 +3,15 @@ import random
 import math
 from itertools import combinations
 from typing import List
+from sympy.polys.polyoptions import Gens
 from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 from pro_def import ProblemDefinition, Solution
 from decode import Decoder
 from heu_init import Initializer
 from operation import Operation
-from util.plot_pf import plot_pareto_front
+from util.plot_pf import plot_pareto_front, plot_min_objectives
 from util.results_manager import save_results
 
 class MOEAD:
@@ -27,12 +29,14 @@ class MOEAD:
         self.operation = operation
         self.decoder = decoder
         self.initializer = initializer
+
         self.N = moead_params["population_size"]
         self.T = moead_params["neighborhood_size"]
         self.max_gen = moead_params["max_generations"]
         self.cr = moead_params["crossover_rate"]
         self.mr = moead_params["mutation_rate"]
         self.num_objectives = 3
+        self.T_second = moead_params["second_neighbor_size"]
 
         self.block_cr_prob = moead_params["block_crossover_prob"]
         self.mode_repair_prob = moead_params["mode_repair_prob"]
@@ -43,7 +47,8 @@ class MOEAD:
         self.weights = self._initialize_weights()
 
         # 初始化邻域
-        self.neighborhoods = self._calculate_neighborhoods()
+        self.neighborhoods = self._calculate_neighborhoods(mode="first")
+        self.second_neighborhoods = self._calculate_neighborhoods(mode="second")
 
         # 初始化种群
         self.population = self._initialize_population()
@@ -76,10 +81,10 @@ class MOEAD:
         
         return np.array(weights[:self.N])
 
-    def _calculate_neighborhoods(self) -> np.ndarray:
+    def _calculate_neighborhoods(self, mode: str = "first") -> np.ndarray:
         """基于权重向量之间的欧氏距离计算每个个体的邻域"""
         distances = np.linalg.norm(self.weights[:, np.newaxis, :] - self.weights, axis=2)
-        return np.argsort(distances, axis=1)[:, :self.T]
+        return np.argsort(distances, axis=1)[:, :self.T if mode == "first" else self.T_second]
 
     def _initialize_population(self) -> List[Solution]:
         """ 使用 Initializer 和 智能分配 策略来初始化种群 """
@@ -183,14 +188,24 @@ class MOEAD:
         mask_putoff = np.random.rand(*parent1.put_off.shape) < 0.5
         child.put_off = np.where(mask_putoff, parent1.put_off, parent2.put_off)
         
-        if random.random() < self.ls_prob:
-            ls_operator = random.choice(["LocalOpTEC"])
-            
-            child = self.decoder.decode(child, ls_operator)
+        # if random.random() < self.ls_prob:
+        #     ls_operator = random.choice(["LocalOpTEC", "RightOpTE"])
+        #     child = self.decoder.decode(child, ls_operator)
 
         return child
     
     def run(self):
+        objectives = np.array([sol.objectives for sol in self.population])
+        print("After Initialization:")
+        print("min_Cmax: ", np.min(objectives[:, 0]))
+        print("min_TE: ", np.min(objectives[:, 1]))
+        print("min_TEC: ", np.min(objectives[:, 2]))
+        print("##########################################################")
+
+        # min_Cmax = []
+        # min_TE = []
+        # min_TEC = []
+
         for gen in tqdm(range(self.max_gen), desc="MOEAD Generation"):
             self._update_nadir_point_with_population()
             for i in range(self.N):
@@ -203,9 +218,7 @@ class MOEAD:
                 child = self._generate_offspring(parent1, parent2)
                 child = self.decoder.decode(child)
 
-                # child = self.decoder.decode(child, "LocalOpTEC")
-                # child = self.decoder.decode(child, "RightOpTE")
-
+                
                 # 3. 更新理想点 Z
                 self._update_ideal_point(child.objectives)
 
@@ -216,7 +229,45 @@ class MOEAD:
                     
                     if new_obj_val < current_obj_val:
                         self.population[j] = child
+
+            objectives = np.array([sol.objectives for sol in self.population])
             
+            # if (gen+1) % 10 == 0:
+            #     min_Cmax.append(np.min(objectives[:, 0]))
+            #     min_TE.append(np.min(objectives[:, 1]))
+            #     min_TEC.append(np.min(objectives[:, 2]))
+
+        # plot_min_objectives(gen, min_Cmax, min_TE, min_TEC)
+
+        # 第二阶段 强化解
+        # for _ in tqdm(range(self.max_gen), desc="MOEAD Generation"):
+        objectives = np.array([sol.objectives for sol in self.population])
+
+        min_TE_idx = np.argmin(objectives[:, 1])
+        min_TEC_idx = np.argmin(objectives[:, 2])
+
+        print("##########################################################")
+        print("After Basic Moead:")
+        print("min_Cmax: ", np.min(objectives[:, 0]))
+        print("min_TE: ", np.min(objectives[:, 1]))
+        print("min_TEC: ", np.min(objectives[:, 2]))
+
+        for i in self.second_neighborhoods[min_TE_idx]:
+            if random.random() < self.ls_prob:
+                child = self.population[i]
+                child = self.decoder.decode(child, "LocalOpTEC")
+        for j in self.second_neighborhoods[min_TEC_idx]:
+            if random.random() < self.ls_prob:
+                child = self.population[j]
+                child = self.decoder.decode(child, "RightOpTE")
+        
+        objectives = np.array([sol.objectives for sol in self.population])
+        print("##########################################################")
+        print("After Local Search:")
+        print("min_Cmax: ", np.min(objectives[:, 0]))
+        print("min_TE: ", np.min(objectives[:, 1]))
+        print("min_TEC: ", np.min(objectives[:, 2]))
+
         return self.population
 
 if __name__ == "__main__":
@@ -230,14 +281,15 @@ if __name__ == "__main__":
     
     moead_params = {
         "population_size": 100,
-        "neighborhood_size": 20,
         "max_generations": 100,
         "crossover_rate": 0.8,
         "mutation_rate": 0.1,
         "block_crossover_prob": 0.2,
         "mode_repair_prob": 0.8,
         "local_search_prob": 0.3,
-        "mode_repair_high_probability": 0.9
+        "mode_repair_high_probability": 0.9,
+        "neighborhood_size": 20,
+        "second_neighbor_size": 5
     }
 
     init_params = {
@@ -264,6 +316,6 @@ if __name__ == "__main__":
     
     save_results(population, moead_params, instance_name)
     
-    plot_pareto_front(population, instance_name)
+    # plot_pareto_front(population, instance_name)
     
     print("##########################################################")

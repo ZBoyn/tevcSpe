@@ -56,3 +56,28 @@ def plot_pareto_front(population: List, problem_name: str = "Pareto Front"):
     fig2.suptitle(f'2D Pareto Fronts for {problem_name}', fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
+
+
+def plot_min_objectives(gen, min_Cmax, min_TE, min_TEC):
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    x = range(1, gen+1, 10)
+    color1 = 'tab:blue'
+    ax1.set_xlabel('Generation')
+    ax1.set_ylabel('Cmax', color=color1)
+    ax1.plot(x, min_Cmax, color=color1, marker='o', label='min_Cmax')
+    ax1.tick_params(axis='y', labelcolor=color1)
+
+    ax2 = ax1.twinx()
+    color2 = 'tab:red'
+    color3 = 'tab:green'
+    ax2.set_ylabel('TE / TEC', color='black')
+    ln2 = ax2.plot(x, min_TE, color=color2, marker='s', label='min_TE')
+    ln3 = ax2.plot(x, min_TEC, color=color3, marker='^', label='min_TEC')
+    ax2.tick_params(axis='y', labelcolor='black')
+
+    lns = [ax1.lines[0]] + ln2 + ln3
+    labels = [l.get_label() for l in lns]
+    ax1.legend(lns, labels, loc='upper right')
+
+    plt.title("Min Objectives over Generations")
+    plt.show()
